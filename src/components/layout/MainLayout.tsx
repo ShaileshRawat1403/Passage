@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { WorkflowCanvas } from "../canvas/WorkflowCanvas";
@@ -11,16 +11,36 @@ import { ConnectionsView } from "../views/ConnectionsView";
 import { ComponentsView } from "../views/ComponentsView";
 import { SettingsView } from "../views/SettingsView";
 import { useWorkflowStore } from "../../store/workflowStore";
+import { useThemeStore, THEMES } from "../../store/themeStore";
 
 export const MainLayout: React.FC = () => {
   const { activeTab } = useWorkflowStore();
+  const { currentThemeId } = useThemeStore();
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", currentThemeId);
+  }, [currentThemeId]);
+
+  const activeTheme = THEMES.find((t) => t.id === currentThemeId) || THEMES[0];
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#020617] text-[#eef3ff] relative select-none font-sans">
-      {/* Immersive Background Ambient Lighting & Cyber Grid */}
+    <div
+      className="flex flex-col h-screen w-screen overflow-hidden relative select-none font-sans transition-colors duration-300"
+      style={{
+        backgroundColor: "var(--app-bg)",
+        color: "var(--text-main)",
+      }}
+    >
+      {/* Dynamic Theme Background Ambient Glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute -top-[10%] -left-[5%] w-[50%] h-[50%] bg-blue-900/15 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[10%] -right-[5%] w-[45%] h-[45%] bg-indigo-900/15 rounded-full blur-[120px]" />
+        <div
+          className="absolute -top-[10%] -left-[5%] w-[50%] h-[50%] rounded-full blur-[140px] opacity-20 transition-all duration-500"
+          style={{ backgroundColor: activeTheme.colors.primary }}
+        />
+        <div
+          className="absolute bottom-[10%] -right-[5%] w-[45%] h-[45%] rounded-full blur-[140px] opacity-20 transition-all duration-500"
+          style={{ backgroundColor: activeTheme.colors.secondary }}
+        />
         <div className="absolute inset-0 bg-grid-pattern opacity-60" />
       </div>
 

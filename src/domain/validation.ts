@@ -2,7 +2,7 @@ import { WorkflowDefinition, ValidationIssue } from "../types/workflow";
 import { WorkflowDefinitionSchema } from "./schemas";
 
 /**
- * Validates a workflow definition deterministically
+ * Validates a workflow definition deterministically and comprehensively
  */
 export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -22,6 +22,9 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
 
   const states = workflow.states || [];
   const stateMap = new Map<string, typeof states[0]>();
+  const transitionIds = new Set<string>();
+  const actionIds = new Set<string>();
+  const compensationIds = new Set<string>();
 
   // Check duplicate state IDs
   for (const st of states) {
@@ -37,7 +40,7 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
     }
   }
 
-  // 1. Check start state
+  // 1. Check start state invariant
   const startStates = states.filter((s) => s.type === "start");
   if (startStates.length === 0) {
     issues.push({
@@ -54,12 +57,30 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
   }
 
   // Check initial state reference
-  if (workflow.initialStateId && !stateMap.has(workflow.initialStateId)) {
-    issues.push({
-      id: "err-invalid-initial-state",
-      severity: "error",
-      message: `Initial state ID "${workflow.initialStateId}" does not exist in workflow states.`,
-    });
+  if (workflow.initialStateId) {
+    const initSt = stateMap.get(workflow.initialStateId);
+    if (!initSt) {
+      issues.push({
+        id: "err-invalid-initial-state",
+        severity: "error",
+        message: `Initial state ID "${workflow.initialStateId}" does not exist in workflow states.`,
+      });
+    } else if (initSt.type !== "start") {
+      issues.push({
+        id: "err-initial-state-not-start",
+        severity: "error",
+        stateId: initSt.id,
+        message: `Initial state "${workflow.initialStateId}" must be of type "start", but found "${initSt.type}".`,
+      });
+    }
+
+    if (startStates.length === 1 && startStates[0].id !== workflow.initialStateId) {
+      issues.push({
+        id: "err-initial-start-mismatch",
+        severity: "error",
+        message: `Workflow initialStateId ("${workflow.initialStateId}") does not match the single Start state ID ("${startStates[0].id}").`,
+      });
+    }
   }
 
   // 2. Check final states
@@ -72,9 +93,87 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
     });
   }
 
+  // Collect and validate all actions
+  const validateAction = (act: any, stateId: string, context: string) => {
+    if (!act.id) {
+      issues.push({
+        id: `err-action-no-id-${stateId}-${context}`,
+        severity: "error",
+        stateId,
+        message: `Action in ${context} of state "${stateId}" is missing an ID.`,
+      });
+      return;
+    }
+
+    if (actionIds.has(act.id)) {
+      issues.push({
+        id: `err-duplicate-action-${act.id}`,
+        severity: "error",
+        stateId,
+        message: `Duplicate action ID detected: "${act.id}". Every action ID must be globally unique.`,
+      });
+    } else {
+      actionIds.add(act.id);
+    }
+
+    if (act.compensationActionId) {
+      compensationIds.add(act.compensationActionId);
+    }
+
+    // Action-type specific config check
+    if (act.type === "http" && !act.httpConfig) {
+      issues.push({
+        id: `err-action-missing-http-config-${act.id}`,
+        severity: "error",
+        stateId,
+        message: `HTTP Action "${act.name || act.id}" is missing required httpConfig.`,
+      });
+    }
+    if (act.type === "agent" && !act.agentConfig) {
+      issues.push({
+        id: `err-action-missing-agent-config-${act.id}`,
+        severity: "error",
+        stateId,
+        message: `Agent Action "${act.name || act.id}" is missing required agentConfig.`,
+      });
+    }
+    if (act.type === "human_task" && !act.humanTaskConfig) {
+      issues.push({
+        id: `err-action-missing-human-config-${act.id}`,
+        severity: "error",
+        stateId,
+        message: `Human Task Action "${act.name || act.id}" is missing required humanTaskConfig.`,
+      });
+    }
+  };
+
   // 3. Inspect individual states
   for (const state of states) {
     const transitions = state.transitions || [];
+
+    // Check state actions
+    (state.entryActions || []).forEach((a) => validateAction(a, state.id, "entryActions"));
+    (state.activeActions || []).forEach((a) => validateAction(a, state.id, "activeActions"));
+    (state.exitActions || []).forEach((a) => validateAction(a, state.id, "exitActions"));
+
+    // Check state timeout target
+    if (state.timeout?.targetStateId && !stateMap.has(state.timeout.targetStateId)) {
+      issues.push({
+        id: `err-timeout-target-missing-${state.id}`,
+        severity: "error",
+        stateId: state.id,
+        message: `Timeout policy in state "${state.name}" points to non-existent target state "${state.timeout.targetStateId}".`,
+      });
+    }
+
+    // Check parallel policy required actions
+    if (state.type === "parallel" && state.parallelPolicy?.requiredActionIds) {
+      for (const reqId of state.parallelPolicy.requiredActionIds) {
+        if (!actionIds.has(reqId)) {
+          // Note: might be validated later if action declared afterwards, checked after loop
+        }
+      }
+    }
 
     // Final states should not have outgoing transitions
     if (state.type === "final" && transitions.length > 0) {
@@ -96,8 +195,60 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
       });
     }
 
-    // Check transition targets
+    // Detect equal-priority ambiguity in outgoing transitions
+    const eventGroupMap = new Map<string, typeof transitions>();
+    for (const tr of transitions) {
+      if (tr.event) {
+        const group = eventGroupMap.get(tr.event) || [];
+        group.push(tr);
+        eventGroupMap.set(tr.event, group);
+      }
+    }
+
+    for (const [evt, trList] of eventGroupMap.entries()) {
+      if (trList.length > 1) {
+        const priorities = trList.map((t) => t.priority ?? 0);
+        const maxP = Math.max(...priorities);
+        const topCount = priorities.filter((p) => p === maxP).length;
+        if (topCount > 1) {
+          issues.push({
+            id: `err-ambiguous-transitions-${state.id}-${evt}`,
+            severity: "error",
+            stateId: state.id,
+            message: `State "${state.name}" has ${topCount} transitions for event "${evt}" with identical highest priority (${maxP}). This creates ambiguous non-deterministic transition selection.`,
+          });
+        }
+      }
+    }
+
+    // Check individual transitions
     for (const transition of transitions) {
+      if (transition.id) {
+        if (transitionIds.has(transition.id)) {
+          issues.push({
+            id: `err-duplicate-transition-${transition.id}`,
+            severity: "error",
+            stateId: state.id,
+            transitionId: transition.id,
+            message: `Duplicate transition ID detected: "${transition.id}". Transition IDs must be unique.`,
+          });
+        } else {
+          transitionIds.add(transition.id);
+        }
+      }
+
+      if (transition.sourceStateId && transition.sourceStateId !== state.id) {
+        issues.push({
+          id: `err-transition-source-mismatch-${transition.id}`,
+          severity: "error",
+          stateId: state.id,
+          transitionId: transition.id,
+          message: `Transition "${transition.id}" in state "${state.id}" specifies sourceStateId "${transition.sourceStateId}" which does not match containing state.`,
+        });
+      }
+
+      (transition.actions || []).forEach((a) => validateAction(a, state.id, `transition:${transition.id}`));
+
       if (!transition.targetStateId) {
         issues.push({
           id: `err-transition-no-target-${transition.id}`,
@@ -116,7 +267,6 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
         });
       }
 
-      // Check event trigger
       if (!transition.event && state.type !== "decision") {
         issues.push({
           id: `warn-transition-no-event-${transition.id}`,
@@ -153,24 +303,15 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
         });
       }
     }
+  }
 
-    // Action complexity warning
-    const totalActions = state.entryActions.length + state.activeActions.length + state.exitActions.length;
-    if (totalActions > 7) {
+  // Verify referenced compensation actions exist
+  for (const compId of compensationIds) {
+    if (!actionIds.has(compId)) {
       issues.push({
-        id: `warn-too-many-actions-${state.id}`,
-        severity: "warning",
-        stateId: state.id,
-        message: `State "${state.name}" contains ${totalActions} actions (>7). Consider breaking down into a subflow or parallel state.`,
-      });
-    }
-
-    if (transitions.length > 5) {
-      issues.push({
-        id: `warn-too-many-transitions-${state.id}`,
-        severity: "warning",
-        stateId: state.id,
-        message: `State "${state.name}" has ${transitions.length} outgoing transitions (>5). Consider using a Decision state.`,
+        id: `err-missing-compensation-action-${compId}`,
+        severity: "error",
+        message: `Referenced compensation action ID "${compId}" does not exist in any state action or transition action.`,
       });
     }
   }

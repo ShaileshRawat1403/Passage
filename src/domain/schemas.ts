@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkflowState } from "../types/workflow";
 
 /**
  * Passage State Machine Core Zod Schemas
@@ -49,7 +50,7 @@ export const ComparisonOperatorSchema = z.enum([
 
 export const LogicGroupSchema = z.enum(["ALL", "ANY", "NOT"]);
 
-export const ConditionRuleSchema = z.object({
+export const ConditionRuleSchema = z.strictObject({
   id: z.string(),
   field: z.string(), // JSONPath e.g. "$.invoice.amount" or "vendor.status"
   operator: ComparisonOperatorSchema,
@@ -57,7 +58,7 @@ export const ConditionRuleSchema = z.object({
   description: z.string().optional(),
 });
 
-export const GuardDefinitionSchema = z.object({
+export const GuardDefinitionSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   description: z.string().optional(),
@@ -66,7 +67,7 @@ export const GuardDefinitionSchema = z.object({
   rawExpression: z.string().optional(),
 });
 
-export const RetryPolicySchema = z.object({
+export const RetryPolicySchema = z.strictObject({
   maxAttempts: z.number().int().min(1),
   initialDelayMs: z.number().min(0),
   backoffMultiplier: z.number().optional(),
@@ -75,31 +76,31 @@ export const RetryPolicySchema = z.object({
   nonRetryableErrors: z.array(z.string()).optional(),
 });
 
-export const TimeoutPolicySchema = z.object({
+export const TimeoutPolicySchema = z.strictObject({
   durationMs: z.number().min(0),
   event: z.string(),
   targetStateId: z.string().optional(),
 });
 
-export const PermissionPolicySchema = z.object({
+export const PermissionPolicySchema = z.strictObject({
   rolesAllowed: z.array(z.string()).optional(),
   usersAllowed: z.array(z.string()).optional(),
   overrideRequiresReason: z.boolean().optional(),
 });
 
-export const AuditPolicySchema = z.object({
+export const AuditPolicySchema = z.strictObject({
   enabled: z.boolean(),
   immutable: z.boolean(),
   evidenceFields: z.array(z.string()).optional(),
 });
 
-export const ParallelPolicySchema = z.object({
+export const ParallelPolicySchema = z.strictObject({
   mode: z.enum(["all", "any", "first_success", "required_subset", "race", "best_effort"]),
   requiredActionIds: z.array(z.string()).optional(),
   cancelRemaining: z.boolean().optional(),
 });
 
-export const ActionDefinitionSchema = z.object({
+export const ActionDefinitionSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   type: ActionTypeSchema,
@@ -108,7 +109,7 @@ export const ActionDefinitionSchema = z.object({
 
   connectionId: z.string().optional(),
   agentConfig: z
-    .object({
+    .strictObject({
       agentName: z.string(),
       modelProvider: z.string(),
       model: z.string(),
@@ -119,7 +120,7 @@ export const ActionDefinitionSchema = z.object({
     .optional(),
 
   httpConfig: z
-    .object({
+    .strictObject({
       method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]),
       url: z.string(),
       headers: z.record(z.string(), z.string()).optional(),
@@ -128,7 +129,7 @@ export const ActionDefinitionSchema = z.object({
     .optional(),
 
   humanTaskConfig: z
-    .object({
+    .strictObject({
       assigneeRole: z.string(),
       dueHours: z.number(),
       options: z.array(z.string()),
@@ -137,7 +138,7 @@ export const ActionDefinitionSchema = z.object({
     .optional(),
 
   subflowConfig: z
-    .object({
+    .strictObject({
       subflowWorkflowId: z.string(),
       subflowVersion: z.string().optional(),
       syncMode: z.boolean(),
@@ -156,7 +157,7 @@ export const ActionDefinitionSchema = z.object({
   compensationActionId: z.string().optional(),
 });
 
-export const TransitionDefinitionSchema = z.object({
+export const TransitionDefinitionSchema = z.strictObject({
   id: z.string(),
   name: z.string().optional(),
   description: z.string().optional(),
@@ -170,8 +171,8 @@ export const TransitionDefinitionSchema = z.object({
   actions: z.array(ActionDefinitionSchema).optional(),
 });
 
-export const WorkflowStateSchema: z.ZodType<any> = z.lazy(() =>
-  z.object({
+export const WorkflowStateSchema: z.ZodType<WorkflowState> = z.lazy(() =>
+  z.strictObject({
     id: z.string(),
     name: z.string(),
     description: z.string().optional(),
@@ -189,12 +190,12 @@ export const WorkflowStateSchema: z.ZodType<any> = z.lazy(() =>
     permissions: PermissionPolicySchema.optional(),
     audit: AuditPolicySchema.optional(),
 
-    position: z.object({ x: z.number(), y: z.number() }).optional(),
+    position: z.strictObject({ x: z.number(), y: z.number() }).optional(),
     childStates: z.array(WorkflowStateSchema).optional(),
   })
 );
 
-export const WorkflowDefinitionSchema = z.object({
+export const WorkflowDefinitionSchema = z.strictObject({
   id: z.string().min(1, "Workflow ID is required"),
   name: z.string().min(1, "Workflow name is required"),
   description: z.string().optional(),
@@ -211,7 +212,7 @@ export const WorkflowDefinitionSchema = z.object({
   updatedAt: z.string().default(() => new Date().toISOString()),
 });
 
-export const WorkflowEventSchema = z.object({
+export const WorkflowEventSchema = z.strictObject({
   id: z.string(),
   type: z.string(),
   timestamp: z.string(),
@@ -221,7 +222,7 @@ export const WorkflowEventSchema = z.object({
   correlationId: z.string().optional(),
 });
 
-export const AuditEventSchema = z.object({
+export const AuditEventSchema = z.strictObject({
   id: z.string(),
   workflowRunId: z.string(),
   workflowVersion: z.string(),
@@ -245,7 +246,7 @@ export const AuditEventSchema = z.object({
   stateId: z.string().optional(),
   actionId: z.string().optional(),
   guardResult: z
-    .object({
+    .strictObject({
       passed: z.boolean(),
       reason: z.string(),
     })
@@ -255,7 +256,7 @@ export const AuditEventSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const WorkflowRunSchema = z.object({
+export const WorkflowRunSchema = z.strictObject({
   id: z.string(),
   caseId: z.string(),
   workflowId: z.string(),
@@ -265,7 +266,7 @@ export const WorkflowRunSchema = z.object({
 
   context: z.record(z.string(), z.unknown()),
   history: z.array(
-    z.object({
+    z.strictObject({
       stateId: z.string(),
       enteredAt: z.string(),
       exitedAt: z.string().optional(),
@@ -274,7 +275,7 @@ export const WorkflowRunSchema = z.object({
   ),
 
   pendingApproval: z
-    .object({
+    .strictObject({
       assigneeRole: z.string(),
       requestedAt: z.string(),
       dueAt: z.string(),

@@ -224,6 +224,12 @@ export function evaluateGuard(
         reason: res.reason,
         details: [guard.rawExpression],
       };
+    } else {
+      return {
+        passed: false,
+        reason: `Guard expression could not be parsed or evaluated: "${guard.rawExpression}"`,
+        details: [guard.rawExpression],
+      };
     }
   }
 

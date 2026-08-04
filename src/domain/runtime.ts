@@ -8,6 +8,7 @@ import {
 } from "../types/workflow";
 import { planTransition, TransitionPlanResult } from "./planner";
 import { executeAction, applyActionOutputToContext } from "./actionExecutor";
+import { RuntimeEnvironment, defaultProductionEnv } from "./runtimeEnvironment";
 
 /**
  * Pure, immutable factory that initializes a new workflow execution run
@@ -15,11 +16,12 @@ import { executeAction, applyActionOutputToContext } from "./actionExecutor";
 export function createWorkflowRun(
   workflow: WorkflowDefinition,
   initialContext: Record<string, unknown> = {},
-  customCaseId?: string
+  customCaseId?: string,
+  env: RuntimeEnvironment = defaultProductionEnv
 ): WorkflowRun {
-  const caseId = customCaseId || `CASE-${Date.now().toString().slice(-6)}`;
-  const runId = `RUN-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
-  const now = new Date().toISOString();
+  const caseId = customCaseId || env.createId("CASE");
+  const runId = env.createId("RUN");
+  const now = env.now();
 
   const startState =
     workflow.states.find((s) => s.id === workflow.initialStateId) ||
@@ -35,7 +37,7 @@ export function createWorkflowRun(
   };
 
   const initialAudit: AuditEvent = {
-    id: `AUDIT-${Date.now()}-1`,
+    id: env.createId("AUDIT"),
     workflowRunId: runId,
     workflowVersion: workflow.version,
     timestamp: now,
@@ -69,7 +71,7 @@ export function createWorkflowRun(
   };
 
   // Process initial state lifecycle actions purely
-  return executeStateLifecycle(workflow, initialRun, startState, "WORKFLOW_STARTED");
+  return executeStateLifecycle(workflow, initialRun, startState, "WORKFLOW_STARTED", env);
 }
 
 /**
@@ -79,16 +81,17 @@ export function executeStateLifecycle(
   workflow: WorkflowDefinition,
   run: WorkflowRun,
   state: WorkflowState,
-  triggerEvent: string
+  triggerEvent: string,
+  env: RuntimeEnvironment = defaultProductionEnv
 ): WorkflowRun {
-  const now = new Date().toISOString();
+  const now = env.now();
   let currentContext = { ...run.context };
   let auditTrail = [...run.auditTrail];
   let completedActions = run.completedActionCount;
 
   // 1. Audit State Entry
   auditTrail.push({
-    id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id: env.createId("AUDIT"),
     workflowRunId: run.id,
     workflowVersion: workflow.version,
     timestamp: now,
@@ -99,15 +102,15 @@ export function executeStateLifecycle(
 
   // 2. Execute Entry Actions
   for (const action of state.entryActions || []) {
-    const actionRes = executeAction(action, currentContext);
+    const actionRes = executeAction(action, currentContext, env);
     completedActions += 1;
     currentContext = applyActionOutputToContext(currentContext, action, actionRes);
 
     auditTrail.push({
-      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
-      timestamp: new Date().toISOString(),
+      timestamp: env.now(),
       eventType: "action_completed",
       stateId: state.id,
       actionId: action.id,
@@ -117,15 +120,15 @@ export function executeStateLifecycle(
 
   // 3. Execute Active Actions
   for (const action of state.activeActions || []) {
-    const actionRes = executeAction(action, currentContext);
+    const actionRes = executeAction(action, currentContext, env);
     completedActions += 1;
     currentContext = applyActionOutputToContext(currentContext, action, actionRes);
 
     auditTrail.push({
-      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
-      timestamp: new Date().toISOString(),
+      timestamp: env.now(),
       eventType: "action_completed",
       stateId: state.id,
       actionId: action.id,
@@ -140,9 +143,9 @@ export function executeStateLifecycle(
 
   if (state.type === "final") {
     newStatus = "completed";
-    completedAt = new Date().toISOString();
+    completedAt = env.now();
     auditTrail.push({
-      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: completedAt,
@@ -158,8 +161,7 @@ export function executeStateLifecycle(
         (a) => a.type === "human_task"
       );
       const role = humanTask?.humanTaskConfig?.assigneeRole || "Reviewer";
-      const dueHours = humanTask?.humanTaskConfig?.dueHours || 24;
-      const dueAt = new Date(Date.now() + dueHours * 3600 * 1000).toISOString();
+      const dueAt = now;
 
       pendingApproval = {
         assigneeRole: role,
@@ -173,7 +175,7 @@ export function executeStateLifecycle(
       };
 
       auditTrail.push({
-        id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: env.createId("AUDIT"),
         workflowRunId: run.id,
         workflowVersion: workflow.version,
         timestamp: now,
@@ -204,7 +206,8 @@ export function dispatchWorkflowEvent(
   workflow: WorkflowDefinition,
   run: WorkflowRun,
   event: WorkflowEvent | string,
-  actor: string = "User Operator"
+  actor: string = "User Operator",
+  env: RuntimeEnvironment = defaultProductionEnv
 ): { updatedRun: WorkflowRun; transitionTaken?: TransitionDefinition; error?: string; plan: TransitionPlanResult } {
   const eventName = typeof event === "string" ? event : event.type;
   const eventPayload = typeof event === "object" ? event.payload : undefined;
@@ -236,14 +239,14 @@ export function dispatchWorkflowEvent(
   }
 
   const { sourceState, targetState, selectedTransition } = plan;
-  const now = new Date().toISOString();
+  const now = env.now();
   let auditTrail = [...currentRunWithPayload.auditTrail];
   let completedActions = currentRunWithPayload.completedActionCount;
 
   // 1. Record guard evaluations in audit trail
   for (const gRes of plan.guardResults || []) {
     auditTrail.push({
-      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: now,
@@ -257,15 +260,15 @@ export function dispatchWorkflowEvent(
 
   // 2. Execute Exit Actions of source state
   for (const action of plan.plannedExitActions || []) {
-    const actionRes = executeAction(action, currentContext);
+    const actionRes = executeAction(action, currentContext, env);
     completedActions += 1;
     currentContext = applyActionOutputToContext(currentContext, action, actionRes);
 
     auditTrail.push({
-      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
-      timestamp: new Date().toISOString(),
+      timestamp: env.now(),
       eventType: "action_completed",
       stateId: sourceState.id,
       actionId: action.id,
@@ -275,7 +278,7 @@ export function dispatchWorkflowEvent(
 
   // 3. Audit State Exit
   auditTrail.push({
-    id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id: env.createId("AUDIT"),
     workflowRunId: run.id,
     workflowVersion: workflow.version,
     timestamp: now,
@@ -287,15 +290,15 @@ export function dispatchWorkflowEvent(
 
   // 4. Execute Transition Actions
   for (const action of plan.plannedTransitionActions || []) {
-    const actionRes = executeAction(action, currentContext);
+    const actionRes = executeAction(action, currentContext, env);
     completedActions += 1;
     currentContext = applyActionOutputToContext(currentContext, action, actionRes);
 
     auditTrail.push({
-      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
-      timestamp: new Date().toISOString(),
+      timestamp: env.now(),
       eventType: "action_completed",
       stateId: sourceState.id,
       actionId: action.id,
@@ -305,7 +308,7 @@ export function dispatchWorkflowEvent(
 
   // 5. Audit Transition Taken
   auditTrail.push({
-    id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    id: env.createId("AUDIT"),
     workflowRunId: run.id,
     workflowVersion: workflow.version,
     timestamp: now,
@@ -351,7 +354,7 @@ export function dispatchWorkflowEvent(
   };
 
   // 7. Execute Target State Entry & Active Lifecycle
-  const finalRun = executeStateLifecycle(workflow, intermediateRun, targetState, eventName);
+  const finalRun = executeStateLifecycle(workflow, intermediateRun, targetState, eventName, env);
 
   return {
     updatedRun: finalRun,

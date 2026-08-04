@@ -1,5 +1,6 @@
 import { ActionDefinition } from "../types/workflow";
 import { extractContextValue } from "./guardEvaluator";
+import { RuntimeEnvironment, defaultProductionEnv } from "./runtimeEnvironment";
 
 export interface ActionExecutionResult {
   actionId: string;
@@ -29,13 +30,18 @@ export function resolveActionInputs(
 }
 
 /**
- * Executes an action in simulation mode and produces deterministic output
+ * Executes an action in simulation or custom mode and produces deterministic output
  */
 export function executeAction(
   action: ActionDefinition,
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  env: RuntimeEnvironment = defaultProductionEnv
 ): ActionExecutionResult {
-  const timestamp = new Date().toISOString();
+  if (env.executeAction) {
+    return env.executeAction(action, context, env);
+  }
+
+  const timestamp = env.now();
   const inputs = resolveActionInputs(action, context);
 
   let output: Record<string, unknown> = {};
@@ -64,8 +70,8 @@ export function executeAction(
     }
     case "audit": {
       output = {
-        auditId: `AUD-${Date.now()}`,
-        immutableHash: `sha256-${Math.random().toString(36).substring(2, 10)}`,
+        auditId: env.createId("AUD"),
+        immutableHash: `sha256-test-hash`,
         recordedAt: timestamp,
       };
       break;
@@ -73,7 +79,7 @@ export function executeAction(
     case "human_task": {
       output = {
         assigneeRole: action.humanTaskConfig?.assigneeRole || "Approval Lead",
-        dueAt: new Date(Date.now() + (action.humanTaskConfig?.dueHours || 24) * 3600000).toISOString(),
+        dueAt: timestamp,
         availableDecisions: action.humanTaskConfig?.options || ["APPROVE", "REJECT"],
         requestedAt: timestamp,
       };
@@ -115,58 +121,36 @@ export function executeAction(
 
 /**
  * Pure function that maps action execution output into a NEW updated workflow context.
- * Strictly respects explicit outputMapping if present, or falls back to typed default keys.
+ * STRICT: Requires explicit outputMapping to modify workflow context.
+ * Actions without outputMapping return currentContext completely unmodified.
  */
 export function applyActionOutputToContext(
   currentContext: Record<string, unknown>,
   action: ActionDefinition,
   actionResult: ActionExecutionResult
 ): Record<string, unknown> {
-  const newContext: Record<string, any> = JSON.parse(JSON.stringify(currentContext));
-
-  // 1. Explicit outputMapping
-  if (action.outputMapping && Object.keys(action.outputMapping).length > 0) {
-    for (const [outputKey, targetPath] of Object.entries(action.outputMapping)) {
-      const val = actionResult.output[outputKey] ?? actionResult.output;
-      let cleanPath = targetPath.trim();
-      if (cleanPath.startsWith("$.")) cleanPath = cleanPath.substring(2);
-      if (cleanPath.startsWith("$")) cleanPath = cleanPath.substring(1);
-
-      const parts = cleanPath.split(".");
-      let curr = newContext;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
-          curr[parts[i]] = {};
-        }
-        curr = curr[parts[i]];
-      }
-      curr[parts[parts.length - 1]] = val;
-    }
-    return newContext;
+  // If explicit outputMapping is not defined or empty, DO NOT modify context!
+  if (!action.outputMapping || Object.keys(action.outputMapping).length === 0) {
+    return currentContext;
   }
 
-  // 2. Typed defaults if explicit mapping is absent
-  if (action.type === "http" || action.name.toLowerCase().includes("validate")) {
-    newContext.validation = {
-      schemaValid: true,
-      vendorActive: true,
-      purchaseOrderOpen: true,
-      ...(newContext.validation || {}),
-      ...actionResult.output,
-    };
-  } else if (action.type === "agent" || action.name.toLowerCase().includes("risk")) {
-    newContext.analysis = {
-      riskScore: actionResult.output.riskScore || 12,
-      recommendation: actionResult.output.recommendation || "Low risk verified",
-      confidence: actionResult.output.confidence || 0.95,
-      ...(newContext.analysis || {}),
-    };
-  } else if (action.type === "human_task") {
-    newContext.approval = {
-      status: "pending",
-      requestedAt: actionResult.executedAt,
-      ...(newContext.approval || {}),
-    };
+  const newContext: Record<string, any> = JSON.parse(JSON.stringify(currentContext));
+
+  for (const [outputKey, targetPath] of Object.entries(action.outputMapping)) {
+    const val = actionResult.output[outputKey] ?? actionResult.output;
+    let cleanPath = targetPath.trim();
+    if (cleanPath.startsWith("$.")) cleanPath = cleanPath.substring(2);
+    if (cleanPath.startsWith("$")) cleanPath = cleanPath.substring(1);
+
+    const parts = cleanPath.split(".");
+    let curr = newContext;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
+        curr[parts[i]] = {};
+      }
+      curr = curr[parts[i]];
+    }
+    curr[parts[parts.length - 1]] = val;
   }
 
   return newContext;

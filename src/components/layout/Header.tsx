@@ -10,10 +10,10 @@ import {
   Package,
   Settings,
   List,
-  Compass,
 } from "lucide-react";
 import { useWorkflowStore, NavigationTab } from "../../store/workflowStore";
 import { DescribeWorkflowModal } from "../ai/DescribeWorkflowModal";
+import { ThemeSelector } from "../theme/ThemeSelector";
 
 export const Header: React.FC = () => {
   const {
@@ -104,6 +104,9 @@ export const Header: React.FC = () => {
 
         {/* Action Controls & Validation Status */}
         <div className="flex items-center gap-3">
+          {/* Theme / Skin Switcher */}
+          <ThemeSelector />
+
           {/* Validation Pill */}
           <div
             className={`px-3 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border flex items-center gap-1.5 ${
