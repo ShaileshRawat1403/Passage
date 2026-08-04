@@ -76,36 +76,21 @@ export const MainLayout: React.FC = () => {
         )}
       </div>
 
-      {/* Immersive Telemetry Footer Status Bar */}
-      <footer className="h-8 border-t border-white/10 bg-black/60 backdrop-blur-xl px-5 flex items-center justify-between z-30 text-[10px] font-mono text-slate-400 uppercase tracking-widest shrink-0">
+      {/* Clean Status Bar */}
+      <footer className="h-8 border-t border-white/10 bg-black/60 backdrop-blur-xl px-5 flex items-center justify-between z-30 text-[10px] font-mono text-slate-400 tracking-wider shrink-0">
         <div className="flex items-center gap-4">
-          <span className="text-cyan-400 font-bold">PASSAGE // ARCHON v2.4</span>
+          <span className="text-cyan-400 font-bold uppercase tracking-widest">PASSAGE v0.1.0-alpha</span>
           <span className="text-slate-600">|</span>
-          <div className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-            SYSTEM NOMINAL
+          <div className="flex items-center gap-1.5 text-emerald-400 uppercase text-[9px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+            Local Simulation Runtime
           </div>
         </div>
 
-        {/* Audio / Pulse Visualizer Bars */}
-        <div className="flex gap-1 h-3 items-end opacity-70">
-          <div className="w-0.5 h-[30%] bg-cyan-400" />
-          <div className="w-0.5 h-[60%] bg-cyan-400" />
-          <div className="w-0.5 h-[90%] bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
-          <div className="w-0.5 h-[40%] bg-cyan-400" />
-          <div className="w-0.5 h-[75%] bg-cyan-400" />
-          <div className="w-0.5 h-[20%] bg-cyan-400" />
-          <div className="w-0.5 h-[100%] bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
-          <div className="w-0.5 h-[50%] bg-cyan-400" />
-        </div>
-
-        <div className="flex items-center gap-5">
-          <span className="text-slate-500">
-            NET_LATENCY: <span className="text-cyan-400">12ms</span>
-          </span>
-          <span className="text-slate-500">
-            GRID_LOCK: <span className="text-emerald-400">ACTIVE</span>
-          </span>
+        <div className="flex items-center gap-5 text-[9px] text-slate-400 font-mono">
+          <span>Human-readable workflow orchestration</span>
+          <span className="text-slate-600">|</span>
+          <span className="text-cyan-400/80">Deterministic Engine</span>
         </div>
       </footer>
     </div>

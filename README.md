@@ -1,54 +1,71 @@
-# Stateflow — Visual State Machine Workflow Designer & Execution Runtime
+# Passage — Human-Readable Workflow Orchestration
 
-**Stateflow** is an enterprise visual workflow platform designed for business process owners and technical engineers. It combines the execution power of a DAG, the lifecycle clarity of a state machine, the expressiveness of statecharts, the durability of modern workflow runtimes, and the readability of business process maps.
-
----
-
-## 🌟 Key Features
-
-* **Visual State Machine Designer**: Drag, connect, and configure process states using understandable vocabulary (*states, events, decisions, transitions, actions, approvals, waiting, completion*).
-* **Human-Readable Guards**: Visually build transition guards using logical condition groups (`ALL`, `ANY`, `NOT`) with operators (`equals`, `>`, `<`, `contains`, `is_true`), or write technical YAML expressions.
-* **Deterministic Execution Engine**: Pure state machine runtime with event dispatching, priority-sorted transition evaluation, and state entry/active/exit action lifecycles.
-* **Durable Waiting & Human Approvals**: Built-in SLA timeout policies, role assignments (e.g. Finance Manager), and human approval decisions (`APPROVE`, `REJECT`, `REQUEST_CHANGES`).
-* **AI Natural Language Workflow Generator**: Integrated Gemini 3.6 Flash assistant to synthesize full state machine workflows from plain English descriptions.
-* **Live Step-by-Step Simulator & Timeline**: Emit events, adjust context payloads, evaluate guards, and inspect append-only audit trails in real time.
-* **Pre-Loaded Sample Workflows**: Includes *Vendor Invoice Review* (Vendor validation, >₹50,000 threshold decision, AI risk analyst agent, Finance approval, payment disbursement), *Research Claim Validation*, and more.
-
----
-
-## 📐 Mental Model
+**Passage** is a deterministic, human-readable workflow orchestration platform designed to bridge business process intent and execution logic.
 
 ```text
-Current State
-+ Event Trigger
-+ Workflow Context Payload
-+ Guard Evaluation
-──────────────────────────────
-Actions Executed
-+ Context Updates
-+ Next Target State
+Passage
+Human-readable workflow orchestration
 ```
 
 ---
 
-## 🚀 Quick Setup
+## 🏛️ Strategic Architecture
+
+Passage separates workflow mechanics into four clean abstractions:
+
+```text
+State       → Where the process currently resides
+Transition  → Why and when it may move
+Action      → What performs the execution work
+Evidence    → How every movement is proven (audit history)
+```
+
+---
+
+## ⚙️ Implemented Capabilities (v0.1.0-alpha)
+
+* **Schema Validation & Zod Contract**: Strict Zod schemas (`WorkflowDefinitionSchema`, `WorkflowStateSchema`, `TransitionDefinitionSchema`, `GuardDefinitionSchema`) guaranteeing schema integrity at import, AI generation, and runtime.
+* **Pure Deterministic Transition Planner**: Side-effect-free transition planning (`planTransition`) with deterministic guard evaluation and explicit ambiguity detection (rejects non-deterministic equal-priority transitions).
+* **Strict Typed Guard Evaluator**: Full typed evaluation supporting `equals`, `not_equals`, `greater_than`, `less_than`, `contains`, `matches_pattern`, `is_true`, `is_false`, `is_one_of` without string coercion bugs or unhandled operators.
+* **Ordered Lifecycle Action Execution**: Action execution following standard state machine lifecycle order: `State Exit Actions` → `Transition Actions` → `Target State Entry Actions` → `Target State Active Actions`.
+* **Explicit Action Input/Output Mapping**: Direct path-based context mapping (`inputMapping` and `outputMapping`) rather than arbitrary action-name heuristics.
+* **Immutable Run State Engine**: Side-effect-free run snapshot creation ensuring audit log integrity and state machine history predictability.
+* **Visual State Machine Canvas & Inspector**: Drag-and-drop state canvas, transition edge inspector, guard condition builder, and simulation controls.
+* **Automated Unit Testing**: Comprehensive Vitest suite covering schema validation, guard evaluation, transition planning, ambiguity rejection, and run snapshots.
+
+---
+
+## 📌 Status & Roadmap
+
+| Feature Layer | Status | Notes |
+| :--- | :--- | :--- |
+| **Zod Schema Contract** | ✅ Implemented | Source of truth for workflow definitions |
+| **Deterministic Transition Planner** | ✅ Implemented | Pure planner with priority & ambiguity rules |
+| **Local Simulation Runtime** | ✅ Implemented | In-memory deterministic simulator |
+| **Unit Test Suite** | ✅ Implemented | `npm test` runs Vitest test runner |
+| **Durable Run Persistence (DB)** | ⏳ Planned (P3) | SQLite/PostgreSQL append-only run store |
+| **Distributed Worker Queue** | ⏳ Planned (P3) | External worker correlation & timer polling |
+
+---
+
+## 🚀 Development Setup
 
 ### Prerequisites
 * Node.js 18+
 
-### Installation
+### Commands
 ```bash
 # Install dependencies
 npm install
 
+# Run unit tests
+npm test
+
+# Run linter / type checker
+npm run lint
+
 # Start development server (Port 3000)
 npm run dev
-```
-
-### Production Build
-```bash
-npm run build
-npm start
 ```
 
 ---
@@ -58,21 +75,19 @@ npm start
 ```text
 src/
 ├── types/
-│   └── workflow.ts        # TypeScript domain models (WorkflowDefinition, WorkflowState, GuardDefinition, etc.)
+│   └── workflow.ts        # Core TypeScript domain types
 ├── domain/
-│   ├── guardEvaluator.ts  # Guard expression and condition evaluator
-│   ├── validation.ts      # Deterministic workflow validator
-│   ├── runtime.ts         # Pure state machine execution engine
-│   └── sampleWorkflows.ts # Seed workflows (Vendor Invoice Review)
+│   ├── schemas.ts         # Zod schemas for all domain entities
+│   ├── validation.ts      # Deterministic workflow validator & Zod check
+│   ├── guardEvaluator.ts  # Typed guard condition evaluator
+│   ├── planner.ts         # Pure deterministic transition planner
+│   ├── actionExecutor.ts  # Action resolution & explicit output mapper
+│   ├── runtime.ts         # Immutable run snapshot reducer
+│   ├── runtime.test.ts    # Vitest unit test suite
+│   └── sampleWorkflows.ts # Seed workflows (e.g. Vendor Invoice Review)
 ├── store/
-│   └── workflowStore.ts   # Zustand store for workflows, runs, and simulation
-├── components/
-│   ├── canvas/            # React Flow custom nodes (Start, Atomic, Decision, Parallel, Waiting, Approval, Final)
-│   ├── inspector/         # State inspector, Guard builder, Action config modal
-│   ├── runtime/           # Simulator toolbar, Live run timeline, Context inspector
-│   ├── ai/                # Natural language AI workflow creator modal
-│   └── views/             # Operational Dashboard, Workflow list, Connections, Governance settings
-├── server.ts              # Express + Vite backend with Gemini AI endpoint
+│   └── workflowStore.ts   # Zustand store for canvas and simulation state
+├── components/            # Visual designer, canvas, inspector, and views
 ```
 
 ---

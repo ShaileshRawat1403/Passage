@@ -1,12 +1,11 @@
 import { GuardDefinition, ConditionRule } from "../types/workflow";
 
 /**
- * Extracts property value from context using simple path notation or JSONPath
+ * Extracts property value from context using dot notation or JSONPath (e.g. "$.invoice.amount" or "vendor.status")
  */
-export function extractContextValue(context: Record<string, any>, pathStr: string): any {
+export function extractContextValue(context: Record<string, unknown>, pathStr: string): unknown {
   if (!pathStr) return undefined;
 
-  // Clean path string (e.g. "$.invoice.amount" -> "invoice.amount")
   let cleanPath = pathStr.trim();
   if (cleanPath.startsWith("$.")) {
     cleanPath = cleanPath.substring(2);
@@ -28,83 +27,150 @@ export function extractContextValue(context: Record<string, any>, pathStr: strin
 }
 
 /**
- * Evaluates a single condition against the workflow context
+ * Coerces unknown values to typed primitive booleans
  */
-export function evaluateCondition(condition: ConditionRule, context: Record<string, any>): { passed: boolean; reason: string } {
+function parseBoolean(val: unknown): boolean {
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    const s = val.trim().toLowerCase();
+    if (s === "true" || s === "1" || s === "yes") return true;
+    if (s === "false" || s === "0" || s === "no" || s === "") return false;
+  }
+  if (typeof val === "number") return val !== 0;
+  return Boolean(val);
+}
+
+/**
+ * Evaluates a single condition rule against the workflow context
+ */
+export function evaluateCondition(
+  condition: ConditionRule,
+  context: Record<string, unknown>
+): { passed: boolean; reason: string } {
   const actualValue = extractContextValue(context, condition.field);
   const targetValue = condition.value;
 
   let passed = false;
-  let operatorDesc: string = condition.operator;
+  let operatorDesc = condition.operator as string;
 
   switch (condition.operator) {
-    case "equals":
-      passed = String(actualValue).toLowerCase() === String(targetValue).toLowerCase();
+    case "equals": {
+      if (typeof actualValue === "number" || typeof targetValue === "number") {
+        passed = Number(actualValue) === Number(targetValue) && !isNaN(Number(actualValue));
+      } else if (typeof actualValue === "boolean" || typeof targetValue === "boolean") {
+        passed = parseBoolean(actualValue) === parseBoolean(targetValue);
+      } else {
+        passed = String(actualValue ?? "").trim().toLowerCase() === String(targetValue ?? "").trim().toLowerCase();
+      }
       operatorDesc = "equals";
       break;
-    case "not_equals":
-      passed = String(actualValue).toLowerCase() !== String(targetValue).toLowerCase();
+    }
+    case "not_equals": {
+      if (typeof actualValue === "number" || typeof targetValue === "number") {
+        passed = Number(actualValue) !== Number(targetValue);
+      } else if (typeof actualValue === "boolean" || typeof targetValue === "boolean") {
+        passed = parseBoolean(actualValue) !== parseBoolean(targetValue);
+      } else {
+        passed = String(actualValue ?? "").trim().toLowerCase() !== String(targetValue ?? "").trim().toLowerCase();
+      }
       operatorDesc = "does not equal";
       break;
-    case "greater_than":
-      passed = Number(actualValue) > Number(targetValue);
+    }
+    case "greater_than": {
+      const actNum = Number(actualValue);
+      const tgtNum = Number(targetValue);
+      passed = !isNaN(actNum) && !isNaN(tgtNum) && actNum > tgtNum;
       operatorDesc = "is greater than";
       break;
-    case "greater_than_or_equal":
-      passed = Number(actualValue) >= Number(targetValue);
+    }
+    case "greater_than_or_equal": {
+      const actNum = Number(actualValue);
+      const tgtNum = Number(targetValue);
+      passed = !isNaN(actNum) && !isNaN(tgtNum) && actNum >= tgtNum;
       operatorDesc = "is greater than or equal to";
       break;
-    case "less_than":
-      passed = Number(actualValue) < Number(targetValue);
+    }
+    case "less_than": {
+      const actNum = Number(actualValue);
+      const tgtNum = Number(targetValue);
+      passed = !isNaN(actNum) && !isNaN(tgtNum) && actNum < tgtNum;
       operatorDesc = "is less than";
       break;
-    case "less_than_or_equal":
-      passed = Number(actualValue) <= Number(targetValue);
+    }
+    case "less_than_or_equal": {
+      const actNum = Number(actualValue);
+      const tgtNum = Number(targetValue);
+      passed = !isNaN(actNum) && !isNaN(tgtNum) && actNum <= tgtNum;
       operatorDesc = "is less than or equal to";
       break;
-    case "contains":
-      passed = String(actualValue || "").toLowerCase().includes(String(targetValue || "").toLowerCase());
+    }
+    case "contains": {
+      const actStr = String(actualValue ?? "").toLowerCase();
+      const tgtStr = String(targetValue ?? "").toLowerCase();
+      passed = actStr.includes(tgtStr);
       operatorDesc = "contains";
       break;
-    case "does_not_contain":
-      passed = !String(actualValue || "").toLowerCase().includes(String(targetValue || "").toLowerCase());
+    }
+    case "does_not_contain": {
+      const actStr = String(actualValue ?? "").toLowerCase();
+      const tgtStr = String(targetValue ?? "").toLowerCase();
+      passed = !actStr.includes(tgtStr);
       operatorDesc = "does not contain";
       break;
-    case "exists":
+    }
+    case "exists": {
       passed = actualValue !== undefined && actualValue !== null && actualValue !== "";
       operatorDesc = "exists";
       break;
-    case "does_not_exist":
+    }
+    case "does_not_exist": {
       passed = actualValue === undefined || actualValue === null || actualValue === "";
       operatorDesc = "does not exist";
       break;
-    case "is_true":
-      passed = Boolean(actualValue) === true;
+    }
+    case "is_true": {
+      passed = parseBoolean(actualValue) === true;
       operatorDesc = "is true";
       break;
-    case "is_false":
-      passed = Boolean(actualValue) === false;
+    }
+    case "is_false": {
+      passed = parseBoolean(actualValue) === false;
       operatorDesc = "is false";
       break;
-    case "starts_with":
-      passed = String(actualValue || "").startsWith(String(targetValue || ""));
+    }
+    case "starts_with": {
+      passed = String(actualValue ?? "").startsWith(String(targetValue ?? ""));
       operatorDesc = "starts with";
       break;
-    case "ends_with":
-      passed = String(actualValue || "").endsWith(String(targetValue || ""));
+    }
+    case "ends_with": {
+      passed = String(actualValue ?? "").endsWith(String(targetValue ?? ""));
       operatorDesc = "ends with";
       break;
-    case "is_one_of":
+    }
+    case "matches_pattern": {
+      try {
+        const pattern = new RegExp(String(targetValue ?? ""), "i");
+        passed = pattern.test(String(actualValue ?? ""));
+      } catch {
+        passed = false;
+      }
+      operatorDesc = "matches regex pattern";
+      break;
+    }
+    case "is_one_of": {
       if (Array.isArray(targetValue)) {
-        passed = targetValue.includes(actualValue);
+        passed = targetValue.includes(actualValue) || targetValue.map(String).includes(String(actualValue));
       } else if (typeof targetValue === "string") {
-        const list = targetValue.split(",").map((s) => s.trim());
-        passed = list.includes(String(actualValue));
+        const list = targetValue.split(",").map((s) => s.trim().toLowerCase());
+        passed = list.includes(String(actualValue ?? "").trim().toLowerCase());
       }
       operatorDesc = "is one of";
       break;
-    default:
-      passed = Boolean(actualValue);
+    }
+    default: {
+      passed = parseBoolean(actualValue);
+    }
   }
 
   const actualStr = actualValue === undefined ? "undefined" : JSON.stringify(actualValue);
@@ -119,20 +185,43 @@ export function evaluateCondition(condition: ConditionRule, context: Record<stri
 /**
  * Evaluates a complete GuardDefinition against context
  */
-export function evaluateGuard(guard: GuardDefinition | undefined, context: Record<string, any>): { passed: boolean; reason: string; details: string[] } {
+export function evaluateGuard(
+  guard: GuardDefinition | undefined,
+  context: Record<string, unknown>
+): { passed: boolean; reason: string; details: string[] } {
   if (!guard) {
     return { passed: true, reason: "No guard specified (unconditional transition)", details: [] };
   }
 
+  // Advanced Expression Evaluation (Structured expression pattern matching)
   if (guard.rawExpression && guard.rawExpression.trim().length > 0) {
-    // Advanced expression evaluation check
-    const raw = guard.rawExpression.toLowerCase();
-    if (raw.includes("amount > 50000") || raw.includes("amount > 50,000")) {
-      const amt = extractContextValue(context, "invoice.amount") ?? extractContextValue(context, "amount") ?? 0;
-      const passed = Number(amt) > 50000;
+    const raw = guard.rawExpression.trim();
+    // Parse expression like "invoice.amount > 50000" or "amount > 50000"
+    const match = raw.match(/^([a-zA-Z0-9_$.]+)\s*(>|>=|<|<=|==|!=)\s*([0-9.]+|"[^"]*"|'[^']*'|true|false)$/i);
+    if (match) {
+      const [, field, op, valStr] = match;
+      const actualVal = extractContextValue(context, field);
+      let targetVal: any = valStr.replace(/^['"]|['"]$/g, "");
+      if (!isNaN(Number(targetVal))) targetVal = Number(targetVal);
+      if (targetVal === "true") targetVal = true;
+      if (targetVal === "false") targetVal = false;
+
+      const opMap: Record<string, any> = {
+        ">": "greater_than",
+        ">=": "greater_than_or_equal",
+        "<": "less_than",
+        "<=": "less_than_or_equal",
+        "==": "equals",
+        "!=": "not_equals",
+      };
+
+      const res = evaluateCondition(
+        { id: "raw-cond", field, operator: opMap[op] || "equals", value: targetVal },
+        context
+      );
       return {
-        passed,
-        reason: passed ? `Invoice amount (${amt}) > 50,000` : `Invoice amount (${amt}) is not > 50,000`,
+        passed: res.passed,
+        reason: res.reason,
         details: [guard.rawExpression],
       };
     }

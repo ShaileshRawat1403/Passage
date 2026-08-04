@@ -48,7 +48,7 @@ export interface ConditionRule {
   id: string;
   field: string; // JSONPath, e.g., "$.invoice.amount" or "vendor.status"
   operator: ComparisonOperator;
-  value?: any;
+  value?: unknown;
   description?: string;
 }
 
@@ -188,8 +188,8 @@ export interface WorkflowDefinition {
   status: "draft" | "published" | "archived";
 
   initialStateId: string;
-  contextSchema?: Record<string, any>;
-  defaultContext?: Record<string, any>;
+  contextSchema?: Record<string, unknown>;
+  defaultContext?: Record<string, unknown>;
 
   states: WorkflowState[];
 
@@ -202,7 +202,7 @@ export interface WorkflowEvent {
   type: string;
   timestamp: string;
   source: string;
-  payload?: Record<string, any>;
+  payload?: Record<string, unknown>;
   actorId?: string;
   correlationId?: string;
 }
@@ -236,7 +236,7 @@ export interface AuditEvent {
   };
   inputHash?: string;
   outputHash?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface WorkflowRun {
@@ -247,7 +247,7 @@ export interface WorkflowRun {
   status: "active" | "waiting" | "completed" | "failed" | "cancelled";
   currentStateId: string;
 
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   history: {
     stateId: string;
     enteredAt: string;

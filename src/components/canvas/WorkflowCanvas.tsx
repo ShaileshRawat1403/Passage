@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   MiniMap,
   Controls,
   Background,
   useNodesState,
   useEdgesState,
-  addEdge,
   Connection,
   Edge,
   Node,
@@ -15,7 +15,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useWorkflowStore } from "../../store/workflowStore";
-import { WorkflowState, TransitionDefinition } from "../../types/workflow";
+import { TransitionDefinition } from "../../types/workflow";
 import { StartNode } from "./nodes/StartNode";
 import { AtomicNode } from "./nodes/AtomicNode";
 import { DecisionNode } from "./nodes/DecisionNode";
@@ -24,6 +24,7 @@ import { WaitingNode } from "./nodes/WaitingNode";
 import { ApprovalNode } from "./nodes/ApprovalNode";
 import { FinalNode } from "./nodes/FinalNode";
 import { CustomEdge } from "./CustomEdge";
+import { FloatingCanvasToolbar } from "./FloatingCanvasToolbar";
 
 const nodeTypes = {
   start: StartNode,
@@ -40,7 +41,7 @@ const edgeTypes = {
   customEdge: CustomEdge,
 };
 
-export const WorkflowCanvas: React.FC = () => {
+const WorkflowCanvasInner: React.FC = () => {
   const {
     workflows,
     activeWorkflowId,
@@ -148,6 +149,8 @@ export const WorkflowCanvas: React.FC = () => {
 
   return (
     <div className="relative w-full h-full bg-[#020617] overflow-hidden select-none">
+      <FloatingCanvasToolbar />
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -164,6 +167,10 @@ export const WorkflowCanvas: React.FC = () => {
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.2}
         maxZoom={2}
+        panOnScroll
+        panOnDrag
+        zoomOnPinch
+        zoomOnDoubleClick
         defaultEdgeOptions={{ type: "customEdge" }}
         className="stateflow-canvas"
       >
@@ -196,3 +203,12 @@ export const WorkflowCanvas: React.FC = () => {
     </div>
   );
 };
+
+export const WorkflowCanvas: React.FC = () => {
+  return (
+    <ReactFlowProvider>
+      <WorkflowCanvasInner />
+    </ReactFlowProvider>
+  );
+};
+

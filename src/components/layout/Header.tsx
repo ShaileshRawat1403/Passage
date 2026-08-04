@@ -36,22 +36,24 @@ export const Header: React.FC = () => {
     <>
       <header className="h-14 bg-black/40 backdrop-blur-xl border-b border-white/10 px-6 flex items-center justify-between text-xs select-none z-30 relative">
         {/* Brand & Workflow Selector */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 border-2 border-cyan-500/50 rounded bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.2)]">
-              <div className="w-4 h-4 bg-cyan-500/20 border border-cyan-400 rounded-xs" />
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-9 h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.25)] shrink-0">
+              <Layers className="w-5 h-5 text-cyan-400" />
             </div>
-            <div>
-              <h1 className="font-bold tracking-[0.2em] text-xs text-cyan-400 leading-tight font-mono">
-                PASSAGE // ARCHON
-              </h1>
-              <p className="text-[8px] text-slate-400 uppercase tracking-widest font-medium font-mono">
-                Workflow Surveillance Unit
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5 leading-none">
+                <span className="font-black tracking-[0.2em] text-sm text-white font-mono uppercase drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
+                  PASSAGE
+                </span>
+              </div>
+              <p className="text-[9px] text-slate-400 tracking-wider font-mono mt-0.5">
+                Human-readable workflow orchestration
               </p>
             </div>
           </div>
 
-          <div className="h-4 w-px bg-white/10" />
+          <div className="h-5 w-px bg-white/10 shrink-0" />
 
           {/* Workflow Picker */}
           <select

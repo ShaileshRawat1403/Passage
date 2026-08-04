@@ -5,16 +5,16 @@ import {
   AuditEvent,
   WorkflowEvent,
   TransitionDefinition,
-  ActionDefinition,
 } from "../types/workflow";
-import { evaluateGuard } from "./guardEvaluator";
+import { planTransition, TransitionPlanResult } from "./planner";
+import { executeAction, applyActionOutputToContext } from "./actionExecutor";
 
 /**
- * Creates a fresh workflow execution run
+ * Pure, immutable factory that initializes a new workflow execution run
  */
 export function createWorkflowRun(
   workflow: WorkflowDefinition,
-  initialContext: Record<string, any> = {},
+  initialContext: Record<string, unknown> = {},
   customCaseId?: string
 ): WorkflowRun {
   const caseId = customCaseId || `CASE-${Date.now().toString().slice(-6)}`;
@@ -40,12 +40,12 @@ export function createWorkflowRun(
     workflowVersion: workflow.version,
     timestamp: now,
     eventType: "workflow_started",
-    actor: "System Runtime",
+    actor: "System Engine",
     stateId: startState.id,
     metadata: { initialContext: mergedContext },
   };
 
-  const run: WorkflowRun = {
+  const initialRun: WorkflowRun = {
     id: runId,
     caseId,
     workflowId: workflow.id,
@@ -68,12 +68,12 @@ export function createWorkflowRun(
     auditTrail: [initialAudit],
   };
 
-  // Run initial state actions
-  return executeStateLifecycle(workflow, run, startState, "WORKFLOW_STARTED");
+  // Process initial state lifecycle actions purely
+  return executeStateLifecycle(workflow, initialRun, startState, "WORKFLOW_STARTED");
 }
 
 /**
- * Executes a state's lifecycle (Entry -> Active actions)
+ * Pure function that processes entry and active actions for a state and produces an immutable updated run.
  */
 export function executeStateLifecycle(
   workflow: WorkflowDefinition,
@@ -82,84 +82,86 @@ export function executeStateLifecycle(
   triggerEvent: string
 ): WorkflowRun {
   const now = new Date().toISOString();
-  let updatedRun = { ...run };
-  const context = { ...updatedRun.context };
+  let currentContext = { ...run.context };
+  let auditTrail = [...run.auditTrail];
+  let completedActions = run.completedActionCount;
 
   // 1. Audit State Entry
-  const entryAudit: AuditEvent = {
+  auditTrail.push({
     id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    workflowRunId: updatedRun.id,
+    workflowRunId: run.id,
     workflowVersion: workflow.version,
     timestamp: now,
     eventType: "state_entered",
     stateId: state.id,
     metadata: { triggerEvent, stateName: state.name },
-  };
-  updatedRun.auditTrail = [...updatedRun.auditTrail, entryAudit];
+  });
 
   // 2. Execute Entry Actions
   for (const action of state.entryActions || []) {
-    const actionResult = executeMockAction(action, context);
-    updatedRun.completedActionCount += 1;
-    applyActionOutputToContext(context, action, actionResult);
+    const actionRes = executeAction(action, currentContext);
+    completedActions += 1;
+    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
 
-    updatedRun.auditTrail.push({
+    auditTrail.push({
       id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      workflowRunId: updatedRun.id,
+      workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: new Date().toISOString(),
       eventType: "action_completed",
       stateId: state.id,
       actionId: action.id,
-      metadata: { actionName: action.name, output: actionResult },
+      metadata: { actionName: action.name, output: actionRes.output },
     });
   }
 
   // 3. Execute Active Actions
   for (const action of state.activeActions || []) {
-    const actionResult = executeMockAction(action, context);
-    updatedRun.completedActionCount += 1;
-    applyActionOutputToContext(context, action, actionResult);
+    const actionRes = executeAction(action, currentContext);
+    completedActions += 1;
+    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
 
-    updatedRun.auditTrail.push({
+    auditTrail.push({
       id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      workflowRunId: updatedRun.id,
+      workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: new Date().toISOString(),
       eventType: "action_completed",
       stateId: state.id,
       actionId: action.id,
-      metadata: { actionName: action.name, output: actionResult },
+      metadata: { actionName: action.name, output: actionRes.output },
     });
   }
 
-  updatedRun.context = context;
+  // Determine updated run status
+  let newStatus = run.status;
+  let completedAt = run.completedAt;
+  let pendingApproval = run.pendingApproval;
 
-  // 4. Update status based on state type
   if (state.type === "final") {
-    updatedRun.status = "completed";
-    updatedRun.completedAt = new Date().toISOString();
-    updatedRun.auditTrail.push({
+    newStatus = "completed";
+    completedAt = new Date().toISOString();
+    auditTrail.push({
       id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      workflowRunId: updatedRun.id,
+      workflowRunId: run.id,
       workflowVersion: workflow.version,
-      timestamp: new Date().toISOString(),
+      timestamp: completedAt,
       eventType: "workflow_completed",
       stateId: state.id,
       metadata: { finalState: state.name },
     });
   } else if (state.type === "waiting" || state.type === "approval") {
-    updatedRun.status = "waiting";
+    newStatus = "waiting";
 
     if (state.type === "approval") {
-      const humanTask = [...state.entryActions, ...state.activeActions].find(
+      const humanTask = [...(state.entryActions || []), ...(state.activeActions || [])].find(
         (a) => a.type === "human_task"
       );
-      const role = humanTask?.humanTaskConfig?.assigneeRole || "Finance Manager";
+      const role = humanTask?.humanTaskConfig?.assigneeRole || "Reviewer";
       const dueHours = humanTask?.humanTaskConfig?.dueHours || 24;
       const dueAt = new Date(Date.now() + dueHours * 3600 * 1000).toISOString();
 
-      updatedRun.pendingApproval = {
+      pendingApproval = {
         assigneeRole: role,
         requestedAt: now,
         dueAt,
@@ -170,248 +172,190 @@ export function executeStateLifecycle(
         ],
       };
 
-      updatedRun.auditTrail.push({
+      auditTrail.push({
         id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        workflowRunId: updatedRun.id,
+        workflowRunId: run.id,
         workflowVersion: workflow.version,
         timestamp: now,
         eventType: "human_approval_requested",
         stateId: state.id,
         actor: role,
-        metadata: { dueAt, choices: updatedRun.pendingApproval.availableDecisions },
+        metadata: { dueAt, choices: pendingApproval.availableDecisions },
       });
     }
   }
 
-  return updatedRun;
+  return {
+    ...run,
+    status: newStatus,
+    completedAt,
+    pendingApproval,
+    context: currentContext,
+    completedActionCount: completedActions,
+    auditTrail,
+  };
 }
 
 /**
- * Dispatches an event to an active workflow run and triggers deterministic transitions
+ * Pure dispatcher that takes an event, plans the transition, executes lifecycle actions,
+ * and produces a new immutable WorkflowRun.
  */
 export function dispatchWorkflowEvent(
   workflow: WorkflowDefinition,
   run: WorkflowRun,
   event: WorkflowEvent | string,
   actor: string = "User Operator"
-): { updatedRun: WorkflowRun; transitionTaken?: TransitionDefinition; error?: string } {
+): { updatedRun: WorkflowRun; transitionTaken?: TransitionDefinition; error?: string; plan: TransitionPlanResult } {
   const eventName = typeof event === "string" ? event : event.type;
-  const eventPayload = typeof event === "object" ? event.payload : {};
+  const eventPayload = typeof event === "object" ? event.payload : undefined;
 
-  let updatedRun = { ...run };
+  // Merge payload into context immutably
+  let currentContext = { ...run.context };
   if (eventPayload && Object.keys(eventPayload).length > 0) {
-    updatedRun.context = { ...updatedRun.context, ...eventPayload };
+    currentContext = { ...currentContext, ...eventPayload };
   }
 
-  const currentState = workflow.states.find((s) => s.id === updatedRun.currentStateId);
-  if (!currentState) {
-    return { updatedRun, error: `Current state ID "${updatedRun.currentStateId}" not found.` };
-  }
+  const currentRunWithPayload: WorkflowRun = {
+    ...run,
+    context: currentContext,
+  };
 
-  if (updatedRun.status === "completed" || updatedRun.status === "failed") {
-    return { updatedRun, error: `Workflow run is already ${updatedRun.status}.` };
-  }
+  // Plan transition deterministically
+  const plan = planTransition({
+    workflow,
+    run: currentRunWithPayload,
+    event,
+  });
 
-  // Find candidate transitions matching event
-  const candidates = (currentState.transitions || []).filter(
-    (t) => t.event === eventName || t.event === "*" || !t.event
-  );
-
-  if (candidates.length === 0) {
+  if (plan.status !== "transition_ready" || !plan.sourceState || !plan.targetState || !plan.selectedTransition) {
     return {
-      updatedRun,
-      error: `No transition found in state "${currentState.name}" for event "${eventName}".`,
+      updatedRun: currentRunWithPayload,
+      error: plan.error || `Transition planning failed with status "${plan.status}".`,
+      plan,
     };
   }
 
-  // Sort candidates by priority (higher priority number first)
-  candidates.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  const { sourceState, targetState, selectedTransition } = plan;
+  const now = new Date().toISOString();
+  let auditTrail = [...currentRunWithPayload.auditTrail];
+  let completedActions = currentRunWithPayload.completedActionCount;
 
-  // Evaluate guards in deterministic priority order
-  let selectedTransition: TransitionDefinition | undefined;
-  let guardEvalReason = "";
-
-  for (const candidate of candidates) {
-    const evalRes = evaluateGuard(candidate.guard, updatedRun.context);
-
-    // Audit Guard Evaluation
-    updatedRun.auditTrail.push({
+  // 1. Record guard evaluations in audit trail
+  for (const gRes of plan.guardResults || []) {
+    auditTrail.push({
       id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      workflowRunId: updatedRun.id,
+      workflowRunId: run.id,
+      workflowVersion: workflow.version,
+      timestamp: now,
+      eventType: "guard_evaluated",
+      stateId: sourceState.id,
+      actor,
+      guardResult: { passed: gRes.passed, reason: gRes.reason },
+      metadata: { transitionId: gRes.transitionId, targetStateId: gRes.targetStateId },
+    });
+  }
+
+  // 2. Execute Exit Actions of source state
+  for (const action of plan.plannedExitActions || []) {
+    const actionRes = executeAction(action, currentContext);
+    completedActions += 1;
+    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
+
+    auditTrail.push({
+      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: new Date().toISOString(),
-      eventType: "guard_evaluated",
-      stateId: currentState.id,
-      actor,
-      guardResult: evalRes,
-      metadata: { transitionId: candidate.id, targetStateId: candidate.targetStateId },
+      eventType: "action_completed",
+      stateId: sourceState.id,
+      actionId: action.id,
+      metadata: { actionName: action.name, output: actionRes.output, phase: "exit" },
     });
-
-    if (evalRes.passed) {
-      selectedTransition = candidate;
-      guardEvalReason = evalRes.reason;
-      break;
-    }
   }
 
-  if (!selectedTransition) {
-    return {
-      updatedRun,
-      error: `Transitions evaluated for event "${eventName}", but all guards blocked.`,
-    };
-  }
-
-  // Transition selected! Execute transition step
-  const targetState = workflow.states.find((s) => s.id === selectedTransition.targetStateId);
-  if (!targetState) {
-    return { updatedRun, error: `Target state "${selectedTransition.targetStateId}" does not exist.` };
-  }
-
-  const now = new Date().toISOString();
-
-  // 1. Exit Actions of current state
-  for (const action of currentState.exitActions || []) {
-    const res = executeMockAction(action, updatedRun.context);
-    applyActionOutputToContext(updatedRun.context, action, res);
-  }
-
-  // 2. Audit State Exit
-  updatedRun.auditTrail.push({
+  // 3. Audit State Exit
+  auditTrail.push({
     id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    workflowRunId: updatedRun.id,
+    workflowRunId: run.id,
     workflowVersion: workflow.version,
     timestamp: now,
     eventType: "state_exited",
-    stateId: currentState.id,
+    stateId: sourceState.id,
     actor,
     metadata: { nextStateId: targetState.id },
   });
 
-  // 3. Audit Transition Taken
-  updatedRun.auditTrail.push({
+  // 4. Execute Transition Actions
+  for (const action of plan.plannedTransitionActions || []) {
+    const actionRes = executeAction(action, currentContext);
+    completedActions += 1;
+    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
+
+    auditTrail.push({
+      id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      workflowRunId: run.id,
+      workflowVersion: workflow.version,
+      timestamp: new Date().toISOString(),
+      eventType: "action_completed",
+      stateId: sourceState.id,
+      actionId: action.id,
+      metadata: { actionName: action.name, output: actionRes.output, phase: "transition" },
+    });
+  }
+
+  // 5. Audit Transition Taken
+  auditTrail.push({
     id: `AUDIT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    workflowRunId: updatedRun.id,
+    workflowRunId: run.id,
     workflowVersion: workflow.version,
     timestamp: now,
     eventType: "transition_taken",
-    stateId: currentState.id,
+    stateId: sourceState.id,
     actor,
     metadata: {
-      fromState: currentState.name,
+      fromState: sourceState.name,
       toState: targetState.name,
       event: eventName,
-      guardReason: guardEvalReason,
+      transitionId: selectedTransition.id,
     },
   });
 
-  // 4. Update History and state pointers
-  const historyIndex = updatedRun.history.findIndex((h) => h.stateId === currentState.id && !h.exitedAt);
-  if (historyIndex >= 0) {
-    updatedRun.history[historyIndex].exitedAt = now;
-    updatedRun.history[historyIndex].eventTriggered = eventName;
-  }
+  // 6. Update history immutably
+  const newHistory = currentRunWithPayload.history.map((h) => {
+    if (h.stateId === sourceState.id && !h.exitedAt) {
+      return { ...h, exitedAt: now, eventTriggered: eventName };
+    }
+    return h;
+  });
 
-  updatedRun.history.push({
+  newHistory.push({
     stateId: targetState.id,
     enteredAt: now,
   });
 
-  if (!updatedRun.visitedStateIds.includes(targetState.id)) {
-    updatedRun.visitedStateIds.push(targetState.id);
-  }
+  const visitedStateIds = Array.from(
+    new Set([...currentRunWithPayload.visitedStateIds, targetState.id])
+  );
 
-  updatedRun.currentStateId = targetState.id;
-  updatedRun.lastEventAt = now;
-  updatedRun.pendingApproval = undefined;
-  updatedRun.status = "active";
+  const intermediateRun: WorkflowRun = {
+    ...currentRunWithPayload,
+    currentStateId: targetState.id,
+    context: currentContext,
+    history: newHistory,
+    visitedStateIds,
+    completedActionCount: completedActions,
+    lastEventAt: now,
+    pendingApproval: undefined,
+    status: "active",
+    auditTrail,
+  };
 
-  // 5. Execute target state entry & active actions
-  updatedRun = executeStateLifecycle(workflow, updatedRun, targetState, eventName);
+  // 7. Execute Target State Entry & Active Lifecycle
+  const finalRun = executeStateLifecycle(workflow, intermediateRun, targetState, eventName);
 
-  return { updatedRun, transitionTaken: selectedTransition };
+  return {
+    updatedRun: finalRun,
+    transitionTaken: selectedTransition,
+    plan,
+  };
 }
-
-/**
- * Executes a single mock action and returns state payload
- */
-export function executeMockAction(action: ActionDefinition, context: Record<string, any>): Record<string, any> {
-  const timestamp = new Date().toISOString();
-
-  switch (action.type) {
-    case "agent":
-      return {
-        riskScore: Math.floor(Math.random() * 25) + 5,
-        confidence: 0.96,
-        recommendation: "Low risk verified by automated AI agent audit.",
-        executedAt: timestamp,
-      };
-    case "http":
-      return {
-        statusCode: 200,
-        response: { status: "valid", vendorActive: true, poMatched: true },
-        durationMs: 142,
-        executedAt: timestamp,
-      };
-    case "audit":
-      return {
-        auditId: `AUD-${Date.now()}`,
-        immutableHash: `sha256-${Math.random().toString(36).substring(2, 10)}`,
-        timestamp,
-      };
-    case "human_task":
-      return {
-        assignedRole: action.humanTaskConfig?.assigneeRole || "Reviewer",
-        status: "pending",
-        dueAt: new Date(Date.now() + 86400000).toISOString(),
-      };
-    case "notification":
-      return {
-        recipient: action.humanTaskConfig?.assigneeRole || "Finance Team",
-        sent: true,
-        sentAt: timestamp,
-      };
-    case "transform":
-      return {
-        transformed: true,
-        schemaValid: true,
-      };
-    default:
-      return {
-        status: "completed",
-        executedAt: timestamp,
-      };
-  }
-}
-
-/**
- * Applies action output into workflow context
- */
-export function applyActionOutputToContext(
-  context: Record<string, any>,
-  action: ActionDefinition,
-  actionResult: Record<string, any>
-) {
-  if (action.type === "http" || action.name.toLowerCase().includes("validate")) {
-    context.validation = {
-      schemaValid: true,
-      vendorActive: true,
-      purchaseOrderOpen: true,
-      ...(context.validation || {}),
-      ...actionResult,
-    };
-  } else if (action.type === "agent" || action.name.toLowerCase().includes("risk")) {
-    context.analysis = {
-      riskScore: actionResult.riskScore || 12,
-      recommendation: actionResult.recommendation || "Low risk",
-      confidence: actionResult.confidence || 0.95,
-      ...(context.analysis || {}),
-    };
-  } else if (action.type === "human_task") {
-    context.approval = {
-      status: "pending",
-      requestedAt: actionResult.executedAt || new Date().toISOString(),
-      ...(context.approval || {}),
-    };
-  }
-}
-

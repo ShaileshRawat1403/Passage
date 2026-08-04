@@ -1,12 +1,41 @@
 import { WorkflowDefinition, ValidationIssue } from "../types/workflow";
+import { WorkflowDefinitionSchema } from "./schemas";
 
 /**
  * Validates a workflow definition deterministically
  */
 export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+
+  // 0. Schema Validation via Zod
+  const zodResult = WorkflowDefinitionSchema.safeParse(workflow);
+  if (!zodResult.success) {
+    for (const issue of zodResult.error.issues) {
+      issues.push({
+        id: `zod-err-${issue.path.join("-")}`,
+        severity: "error",
+        field: issue.path.join("."),
+        message: `Schema violation at [${issue.path.join(".")}]: ${issue.message}`,
+      });
+    }
+  }
+
   const states = workflow.states || [];
-  const stateMap = new Map(states.map((s) => [s.id, s]));
+  const stateMap = new Map<string, typeof states[0]>();
+
+  // Check duplicate state IDs
+  for (const st of states) {
+    if (stateMap.has(st.id)) {
+      issues.push({
+        id: `err-duplicate-state-${st.id}`,
+        severity: "error",
+        stateId: st.id,
+        message: `Duplicate state ID detected: "${st.id}". Every state ID must be unique.`,
+      });
+    } else {
+      stateMap.set(st.id, st);
+    }
+  }
 
   // 1. Check start state
   const startStates = states.filter((s) => s.type === "start");
