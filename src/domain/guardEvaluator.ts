@@ -1,4 +1,4 @@
-import { GuardDefinition, ConditionRule } from "../types/workflow";
+import { GuardDefinition, ConditionRule, ComparisonOperator } from "../types/workflow";
 
 /**
  * Extracts property value from context using dot notation or JSONPath (e.g. "$.invoice.amount" or "vendor.status")
@@ -198,15 +198,17 @@ export function evaluateGuard(
     const raw = guard.rawExpression.trim();
     // Parse expression like "invoice.amount > 50000" or "amount > 50000"
     const match = raw.match(/^([a-zA-Z0-9_$.]+)\s*(>|>=|<|<=|==|!=)\s*([0-9.]+|"[^"]*"|'[^']*'|true|false)$/i);
-    if (match) {
-      const [, field, op, valStr] = match;
+    if (match && match[1] && match[2] && match[3]) {
+      const field = match[1];
+      const op = match[2];
+      const valStr = match[3];
       const actualVal = extractContextValue(context, field);
-      let targetVal: any = valStr.replace(/^['"]|['"]$/g, "");
-      if (!isNaN(Number(targetVal))) targetVal = Number(targetVal);
+      let targetVal: unknown = valStr.replace(/^['"]|['"]$/g, "");
+      if (typeof targetVal === "string" && !isNaN(Number(targetVal))) targetVal = Number(targetVal);
       if (targetVal === "true") targetVal = true;
       if (targetVal === "false") targetVal = false;
 
-      const opMap: Record<string, any> = {
+      const opMap: Record<string, ComparisonOperator> = {
         ">": "greater_than",
         ">=": "greater_than_or_equal",
         "<": "less_than",
@@ -215,8 +217,10 @@ export function evaluateGuard(
         "!=": "not_equals",
       };
 
+      const mappedOp: ComparisonOperator = opMap[op] || "equals";
+
       const res = evaluateCondition(
-        { id: "raw-cond", field, operator: opMap[op] || "equals", value: targetVal },
+        { id: "raw-cond", field, operator: mappedOp, value: targetVal },
         context
       );
       return {

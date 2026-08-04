@@ -29,7 +29,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
   );
 
   // HTTP config
-  const [httpMethod, setHttpMethod] = useState<"GET" | "POST" | "PUT" | "DELETE">(
+  const [httpMethod, setHttpMethod] = useState<"GET" | "POST" | "PUT" | "DELETE" | "PATCH">(
     action?.httpConfig?.method || "POST"
   );
   const [httpUrl, setHttpUrl] = useState(action?.httpConfig?.url || "/api/v1/service");

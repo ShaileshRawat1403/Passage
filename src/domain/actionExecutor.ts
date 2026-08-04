@@ -37,86 +37,97 @@ export function executeAction(
   context: Record<string, unknown>,
   env: RuntimeEnvironment = defaultProductionEnv
 ): ActionExecutionResult {
-  if (env.executeAction) {
-    return env.executeAction(action, context, env);
-  }
-
   const timestamp = env.now();
-  const inputs = resolveActionInputs(action, context);
+  try {
+    if (env.executeAction) {
+      return env.executeAction(action, context, env);
+    }
 
-  let output: Record<string, unknown> = {};
+    const inputs = resolveActionInputs(action, context);
+    let output: Record<string, unknown> = {};
 
-  switch (action.type) {
-    case "agent": {
-      const isRiskCheck = action.name.toLowerCase().includes("risk");
-      output = {
-        riskScore: isRiskCheck ? 15 : 5,
-        recommendation: "Automated agent risk check passed successfully.",
-        confidence: 0.96,
-        agentName: action.agentConfig?.agentName || "Agent Unit",
-        executedAt: timestamp,
-      };
-      break;
+    switch (action.type) {
+      case "agent": {
+        const isRiskCheck = action.name.toLowerCase().includes("risk");
+        output = {
+          riskScore: isRiskCheck ? 15 : 5,
+          recommendation: "Automated agent risk check passed successfully.",
+          confidence: 0.96,
+          agentName: action.agentConfig?.agentName || "Agent Unit",
+          executedAt: timestamp,
+        };
+        break;
+      }
+      case "http": {
+        output = {
+          statusCode: 200,
+          response: { status: "valid", vendorActive: true, poMatched: true },
+          headers: { "content-type": "application/json" },
+          durationMs: 120,
+          executedAt: timestamp,
+        };
+        break;
+      }
+      case "audit": {
+        output = {
+          auditId: env.createId("AUD"),
+          immutableHash: `sha256-test-hash`,
+          recordedAt: timestamp,
+        };
+        break;
+      }
+      case "human_task": {
+        output = {
+          assigneeRole: action.humanTaskConfig?.assigneeRole || "Approval Lead",
+          dueAt: timestamp,
+          availableDecisions: action.humanTaskConfig?.options || ["APPROVE", "REJECT"],
+          requestedAt: timestamp,
+        };
+        break;
+      }
+      case "notification": {
+        output = {
+          recipient: action.humanTaskConfig?.assigneeRole || "Target Stakeholder",
+          delivered: true,
+          deliveredAt: timestamp,
+        };
+        break;
+      }
+      case "transform": {
+        output = {
+          transformed: true,
+          schemaValid: true,
+          inputKeysProcessed: Object.keys(inputs),
+          transformedAt: timestamp,
+        };
+        break;
+      }
+      default: {
+        output = {
+          status: "completed",
+          executedAt: timestamp,
+        };
+      }
     }
-    case "http": {
-      output = {
-        statusCode: 200,
-        response: { status: "valid", vendorActive: true, poMatched: true },
-        headers: { "content-type": "application/json" },
-        durationMs: 120,
-        executedAt: timestamp,
-      };
-      break;
-    }
-    case "audit": {
-      output = {
-        auditId: env.createId("AUD"),
-        immutableHash: `sha256-test-hash`,
-        recordedAt: timestamp,
-      };
-      break;
-    }
-    case "human_task": {
-      output = {
-        assigneeRole: action.humanTaskConfig?.assigneeRole || "Approval Lead",
-        dueAt: timestamp,
-        availableDecisions: action.humanTaskConfig?.options || ["APPROVE", "REJECT"],
-        requestedAt: timestamp,
-      };
-      break;
-    }
-    case "notification": {
-      output = {
-        recipient: action.humanTaskConfig?.assigneeRole || "Target Stakeholder",
-        delivered: true,
-        deliveredAt: timestamp,
-      };
-      break;
-    }
-    case "transform": {
-      output = {
-        transformed: true,
-        schemaValid: true,
-        inputKeysProcessed: Object.keys(inputs),
-        transformedAt: timestamp,
-      };
-      break;
-    }
-    default: {
-      output = {
-        status: "completed",
-        executedAt: timestamp,
-      };
-    }
+
+    return {
+      actionId: action.id,
+      actionName: action.name,
+      status: "success",
+      output,
+      executedAt: timestamp,
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    return {
+      actionId: action.id,
+      actionName: action.name,
+      status: "failure",
+      error: errorMsg,
+      output: {},
+      executedAt: timestamp,
+    };
   }
-
-  return {
-    actionId: action.id,
-    actionName: action.name,
-    status: "success",
-    output,
-    executedAt: timestamp,
-  };
 }
 
 /**
@@ -145,12 +156,17 @@ export function applyActionOutputToContext(
     const parts = cleanPath.split(".");
     let curr = newContext;
     for (let i = 0; i < parts.length - 1; i++) {
-      if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
-        curr[parts[i]] = {};
+      const part = parts[i];
+      if (!part) continue;
+      if (!curr[part] || typeof curr[part] !== "object") {
+        curr[part] = {};
       }
-      curr = curr[parts[i]];
+      curr = curr[part];
     }
-    curr[parts[parts.length - 1]] = val;
+    const lastPart = parts[parts.length - 1];
+    if (lastPart) {
+      curr[lastPart] = val;
+    }
   }
 
   return newContext;

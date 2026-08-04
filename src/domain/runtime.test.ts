@@ -167,8 +167,11 @@ describe("Passage State Machine - Deterministic Transition Planner", () => {
 
   it("should pick higher priority transition deterministically when priorities differ", () => {
     const distinctWf: WorkflowDefinition = JSON.parse(JSON.stringify(workflowWithAmbiguity));
-    distinctWf.states[0].transitions[0].priority = 20; // Higher priority for Path A
-    distinctWf.states[0].transitions[1].priority = 10;
+    const state0 = distinctWf.states[0];
+    if (state0 && state0.transitions && state0.transitions[0] && state0.transitions[1]) {
+      state0.transitions[0].priority = 20; // Higher priority for Path A
+      state0.transitions[1].priority = 10;
+    }
 
     const run = createWorkflowRun(distinctWf);
     const plan = planTransition({

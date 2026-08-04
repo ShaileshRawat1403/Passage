@@ -27,10 +27,10 @@ export const ThemeSelector: React.FC = () => {
         title="Toggle Theme / Skin"
       >
         <Palette className="w-3.5 h-3.5 text-cyan-400" />
-        <span className="hidden sm:inline font-mono">{activeTheme.name}</span>
+        <span className="hidden sm:inline font-mono">{activeTheme?.name || "Theme"}</span>
         <div
           className="w-2.5 h-2.5 rounded-full border border-white/30"
-          style={{ backgroundColor: activeTheme.colors.primary }}
+          style={{ backgroundColor: activeTheme?.colors.primary || "#38bdf8" }}
         />
       </button>
 

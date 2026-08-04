@@ -38,6 +38,8 @@ export const FloatingCanvasToolbar: React.FC = () => {
 
   const activeWorkflow = workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
 
+  if (!activeWorkflow) return null;
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
@@ -124,6 +126,7 @@ export const FloatingCanvasToolbar: React.FC = () => {
 
     // Initial state is column 0
     const startState = states.find((s) => s.type === "start") || states[0];
+    if (!startState) return;
     columnMap.set(startState.id, 0);
 
     let changed = true;

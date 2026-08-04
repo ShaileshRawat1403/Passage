@@ -10,6 +10,7 @@ import {
 } from "../types/workflow";
 import { sampleWorkflows, vendorInvoiceWorkflow } from "../domain/sampleWorkflows";
 import { validateWorkflow } from "../domain/validation";
+import { parseWorkflowDefinition } from "../domain/parser";
 import { createWorkflowRun, dispatchWorkflowEvent } from "../domain/runtime";
 
 export type NavigationTab =
@@ -257,22 +258,28 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   importWorkflowJson: (jsonText) => {
+    let raw: unknown;
     try {
-      const parsed = JSON.parse(jsonText) as WorkflowDefinition;
-      if (!parsed.id || !parsed.name || !Array.isArray(parsed.states)) {
-        throw new Error("Invalid workflow schema format");
-      }
-      parsed.id = `imported-${Date.now()}`;
-      set((state) => ({
-        workflows: [parsed, ...state.workflows],
-        activeWorkflowId: parsed.id,
-        activeTab: "designer",
-        validationIssues: validateWorkflow(parsed),
-      }));
-      return parsed.id;
-    } catch (e: any) {
-      throw new Error(e.message || "Failed to parse JSON text");
+      raw = JSON.parse(jsonText);
+    } catch {
+      throw new Error("Invalid JSON: Unable to parse input text as JSON.");
     }
+
+    const parseResult = parseWorkflowDefinition(raw);
+    if (!parseResult.success || !parseResult.workflow) {
+      throw new Error(
+        `Workflow import rejected due to contract validation errors:\n${parseResult.errors.join("\n")}`
+      );
+    }
+
+    const workflow = parseResult.workflow;
+    set((state) => ({
+      workflows: [workflow, ...state.workflows],
+      activeWorkflowId: workflow.id,
+      activeTab: "designer",
+      validationIssues: parseResult.issues,
+    }));
+    return workflow.id;
   },
 
   addState: (workflowId, newState) => {
@@ -285,8 +292,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   updateState: (workflowId, stateId, partial) => {
     get().updateWorkflow(workflowId, (draft) => {
       const idx = draft.states.findIndex((s) => s.id === stateId);
-      if (idx >= 0) {
-        draft.states[idx] = { ...draft.states[idx], ...partial };
+      const existing = draft.states[idx];
+      if (idx >= 0 && existing) {
+        draft.states[idx] = { ...existing, ...partial };
       }
     });
   },
@@ -324,9 +332,11 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   updateTransition: (workflowId, transitionId, partial) => {
     get().updateWorkflow(workflowId, (draft) => {
       for (const state of draft.states) {
-        const idx = (state.transitions || []).findIndex((t) => t.id === transitionId);
-        if (idx >= 0) {
-          state.transitions[idx] = { ...state.transitions[idx], ...partial };
+        if (!state.transitions) continue;
+        const idx = state.transitions.findIndex((t) => t.id === transitionId);
+        const existingTr = state.transitions[idx];
+        if (idx >= 0 && existingTr) {
+          state.transitions[idx] = { ...existingTr, ...partial };
           break;
         }
       }

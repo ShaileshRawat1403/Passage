@@ -6,6 +6,8 @@ export interface RuntimeEnvironment {
   now(): string;
   /** Creates a unique deterministic or random identifier for a given namespace */
   createId(namespace: string): string;
+  /** Adds duration in milliseconds to an ISO timestamp and returns updated ISO string */
+  addMilliseconds(timestamp: string, durationMs: number): string;
   /** Optional custom action execution handler */
   executeAction?: (
     action: ActionDefinition,
@@ -23,6 +25,10 @@ export const defaultProductionEnv: RuntimeEnvironment = {
     const randomPart = Math.random().toString(36).substring(2, 9).toUpperCase();
     return `${namespace.toUpperCase()}-${Date.now()}-${randomPart}`;
   },
+  addMilliseconds: (timestamp: string, durationMs: number) => {
+    const date = new Date(timestamp);
+    return new Date(date.getTime() + durationMs).toISOString();
+  },
 };
 
 /**
@@ -37,6 +43,10 @@ export function createTestEnvironment(
     createId: (namespace: string) => {
       counter += 1;
       return `${namespace.toUpperCase()}-TEST-${String(counter).padStart(4, "0")}`;
+    },
+    addMilliseconds: (timestamp: string, durationMs: number) => {
+      const date = new Date(timestamp);
+      return new Date(date.getTime() + durationMs).toISOString();
     },
   };
 }

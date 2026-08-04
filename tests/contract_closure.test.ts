@@ -205,6 +205,6 @@ describe("P0.1 Contract Closure - Deterministic Runtime Environment", () => {
 
     expect(dispatch1.updatedRun).toEqual(dispatch2.updatedRun);
     expect(dispatch1.updatedRun.startedAt).toBe(fixedTime);
-    expect(dispatch1.updatedRun.auditTrail[0].id).toContain("AUDIT-TEST-");
+    expect(dispatch1.updatedRun.auditTrail[0]?.id).toContain("AUDIT-TEST-");
   });
 });

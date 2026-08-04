@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plug, CheckCircle2, RefreshCw, Plus, Bot, Globe, Shield, Key } from "lucide-react";
+import { CheckCircle2, RefreshCw, Plus, Bot, Globe } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
 
 export const ConnectionsView: React.FC = () => {
@@ -24,52 +24,52 @@ export const ConnectionsView: React.FC = () => {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6 text-xs">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold font-mono text-[#eef3ff]">
+          <h1 className="text-xl font-bold font-mono text-slate-100 uppercase tracking-wider">
             External Connections & API Integrations
           </h1>
-          <p className="text-[#8c98ae] mt-0.5">
+          <p className="text-slate-400 mt-0.5 text-xs">
             Manage authenticated connections for AI Agent providers, REST endpoints, webhooks, and enterprise APIs.
           </p>
         </div>
 
         <button
           onClick={() => setShowAdd(true)}
-          className="px-4 py-2 rounded-xl bg-[#45e0d1] hover:bg-[#38c9bb] text-[#080b12] font-bold flex items-center gap-1.5 shadow-lg shadow-[#45e0d1]/20 transition-all"
+          className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>Add Connection</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {connections.map((c) => (
           <div
             key={c.id}
-            className="p-5 rounded-2xl bg-[#0f1420] border border-[#253047] shadow-xl space-y-3"
+            className="p-5 rounded-2xl bg-black/30 backdrop-blur-xl border border-white/10 shadow-2xl space-y-3"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-[#131a28] border border-[#253047] flex items-center justify-center text-[#45e0d1]">
-                  {c.type === "agent_provider" ? <Bot className="w-4 h-4 text-[#ff5db1]" /> : <Globe className="w-4 h-4 text-[#71a7ff]" />}
+                <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-cyan-400">
+                  {c.type === "agent_provider" ? <Bot className="w-4 h-4 text-pink-400" /> : <Globe className="w-4 h-4 text-blue-400" />}
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-[#eef3ff]">{c.name}</h3>
-                  <p className="text-[10px] font-mono text-[#8c98ae]">{c.service}</p>
+                  <h3 className="font-bold text-sm text-slate-100">{c.name}</h3>
+                  <p className="text-[10px] font-mono text-slate-400">{c.service}</p>
                 </div>
               </div>
 
-              <span className="px-2.5 py-1 rounded-full bg-[#5ee28a]/10 text-[#5ee28a] border border-[#5ee28a]/30 font-mono text-[10px] font-bold flex items-center gap-1">
+              <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
                 Connected
               </span>
             </div>
 
-            <div className="pt-2 border-t border-[#253047] flex items-center justify-between text-[10px] font-mono text-[#8c98ae]">
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-400">
               <span>Last tested: {new Date(c.lastTestedAt || Date.now()).toLocaleTimeString()}</span>
-              <button className="text-[#45e0d1] hover:underline flex items-center gap-1">
+              <button className="text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer">
                 <RefreshCw className="w-3 h-3" />
                 Test Ping
               </button>
@@ -79,33 +79,33 @@ export const ConnectionsView: React.FC = () => {
       </div>
 
       {showAdd && (
-        <div className="p-5 rounded-2xl bg-[#0f1420] border border-[#253047] space-y-3 max-w-md">
-          <h3 className="font-bold text-sm text-[#eef3ff]">Add New Integration Connection</h3>
+        <div className="p-5 rounded-2xl bg-slate-950 border border-white/10 space-y-3 max-w-md shadow-2xl">
+          <h3 className="font-bold text-sm text-slate-100 uppercase font-mono tracking-wider">Add New Integration Connection</h3>
           <div>
-            <label className="block text-[#8c98ae] font-mono mb-1">Connection Name</label>
+            <label className="block text-slate-400 font-mono mb-1 text-[10px] uppercase tracking-wider">Connection Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Stripe Billing Webhook"
-              className="w-full px-3 py-2 rounded-xl bg-[#131a28] border border-[#253047] text-[#eef3ff] outline-none text-xs"
+              className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none text-xs focus:border-cyan-400"
             />
           </div>
           <div>
-            <label className="block text-[#8c98ae] font-mono mb-1">Service Target</label>
+            <label className="block text-slate-400 font-mono mb-1 text-[10px] uppercase tracking-wider">Service Target</label>
             <input
               type="text"
               value={service}
               onChange={(e) => setService(e.target.value)}
               placeholder="e.g. https://api.stripe.com"
-              className="w-full px-3 py-2 rounded-xl bg-[#131a28] border border-[#253047] text-[#eef3ff] outline-none text-xs"
+              className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none text-xs focus:border-cyan-400"
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 rounded-lg bg-[#080b12] text-[#8c98ae]">
+            <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-slate-200 cursor-pointer">
               Cancel
             </button>
-            <button onClick={handleAdd} className="px-4 py-1.5 rounded-lg bg-[#45e0d1] text-[#080b12] font-bold">
+            <button onClick={handleAdd} className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold cursor-pointer">
               Save
             </button>
           </div>

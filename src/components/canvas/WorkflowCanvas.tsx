@@ -25,6 +25,7 @@ import { ApprovalNode } from "./nodes/ApprovalNode";
 import { FinalNode } from "./nodes/FinalNode";
 import { CustomEdge } from "./CustomEdge";
 import { FloatingCanvasToolbar } from "./FloatingCanvasToolbar";
+import { FloatingStateInspector } from "../inspector/FloatingStateInspector";
 
 const nodeTypes = {
   start: StartNode,
@@ -64,7 +65,7 @@ const WorkflowCanvasInner: React.FC = () => {
       id: st.id,
       type: st.type,
       position: st.position || { x: 100, y: 100 },
-      data: st,
+      data: st as unknown as Record<string, unknown>,
       selected: st.id === selectedStateId,
     }));
   }, [activeWorkflow, selectedStateId]);
@@ -103,10 +104,11 @@ const WorkflowCanvasInner: React.FC = () => {
 
   // Handle Dragging Node positions
   const onNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (_event: unknown, node: Node) => {
+      if (!activeWorkflow) return;
       updateStatePosition(activeWorkflow.id, node.id, node.position);
     },
-    [activeWorkflow?.id, updateStatePosition]
+    [activeWorkflow, updateStatePosition]
   );
 
   // Handle Node selection
@@ -128,7 +130,7 @@ const WorkflowCanvasInner: React.FC = () => {
   // Handle Connecting handles to create new Transition
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (!connection.source || !connection.target) return;
+      if (!activeWorkflow || !connection.source || !connection.target) return;
       const newTransition: TransitionDefinition = {
         id: `tr-${Date.now()}`,
         name: "New Route",
@@ -139,7 +141,7 @@ const WorkflowCanvasInner: React.FC = () => {
       };
       addTransition(activeWorkflow.id, newTransition);
     },
-    [activeWorkflow?.id, addTransition]
+    [activeWorkflow, addTransition]
   );
 
   const onPaneClick = useCallback(() => {
@@ -150,6 +152,7 @@ const WorkflowCanvasInner: React.FC = () => {
   return (
     <div className="relative w-full h-full bg-[#020617] overflow-hidden select-none">
       <FloatingCanvasToolbar />
+      <FloatingStateInspector />
 
       <ReactFlow
         nodes={nodes}

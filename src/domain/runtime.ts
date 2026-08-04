@@ -5,6 +5,7 @@ import {
   AuditEvent,
   WorkflowEvent,
   TransitionDefinition,
+  ActionDefinition,
 } from "../types/workflow";
 import { planTransition, TransitionPlanResult } from "./planner";
 import { executeAction, applyActionOutputToContext } from "./actionExecutor";
@@ -27,6 +28,10 @@ export function createWorkflowRun(
     workflow.states.find((s) => s.id === workflow.initialStateId) ||
     workflow.states.find((s) => s.type === "start") ||
     workflow.states[0];
+
+  if (!startState) {
+    throw new Error(`Workflow "${workflow.id}" does not contain any states.`);
+  }
 
   const mergedContext = {
     caseId,
@@ -88,6 +93,8 @@ export function executeStateLifecycle(
   let currentContext = { ...run.context };
   let auditTrail = [...run.auditTrail];
   let completedActions = run.completedActionCount;
+  let failedActions = run.failedActionCount;
+  let hasFailed = false;
 
   // 1. Audit State Entry
   auditTrail.push({
@@ -97,46 +104,156 @@ export function executeStateLifecycle(
     timestamp: now,
     eventType: "state_entered",
     stateId: state.id,
-    metadata: { triggerEvent, stateName: state.name },
+    metadata: { triggerEvent, stateName: state.name, stateType: state.type },
   });
+
+  // Helper to execute sequential actions
+  const runActionSequential = (action: ActionDefinition, phase: "entry" | "active" | "exit") => {
+    if (hasFailed) return;
+
+    auditTrail.push({
+      id: env.createId("AUDIT"),
+      workflowRunId: run.id,
+      workflowVersion: workflow.version,
+      timestamp: env.now(),
+      eventType: "action_started",
+      stateId: state.id,
+      actionId: action.id,
+      metadata: { actionName: action.name, phase },
+    });
+
+    const actionRes = executeAction(action, currentContext, env);
+
+    if (actionRes.status === "failure") {
+      failedActions += 1;
+      hasFailed = true;
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "action_failed",
+        stateId: state.id,
+        actionId: action.id,
+        metadata: { actionName: action.name, error: actionRes.error, phase },
+      });
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "workflow_failed",
+        stateId: state.id,
+        metadata: { reason: `Action "${action.name}" (${action.id}) failed: ${actionRes.error}` },
+      });
+    } else {
+      completedActions += 1;
+      currentContext = applyActionOutputToContext(currentContext, action, actionRes);
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "action_completed",
+        stateId: state.id,
+        actionId: action.id,
+        metadata: { actionName: action.name, output: actionRes.output, phase },
+      });
+    }
+  };
 
   // 2. Execute Entry Actions
   for (const action of state.entryActions || []) {
-    const actionRes = executeAction(action, currentContext, env);
-    completedActions += 1;
-    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
-
-    auditTrail.push({
-      id: env.createId("AUDIT"),
-      workflowRunId: run.id,
-      workflowVersion: workflow.version,
-      timestamp: env.now(),
-      eventType: "action_completed",
-      stateId: state.id,
-      actionId: action.id,
-      metadata: { actionName: action.name, output: actionRes.output },
-    });
+    runActionSequential(action, "entry");
+    if (hasFailed) break;
   }
 
   // 3. Execute Active Actions
-  for (const action of state.activeActions || []) {
-    const actionRes = executeAction(action, currentContext, env);
-    completedActions += 1;
-    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
+  if (!hasFailed) {
+    if (state.type === "parallel") {
+      // Deterministic parallel execution semantics: all parallel actions execute against the same snapshot context
+      const snapshotContext = { ...currentContext };
+      const parallelOutputs: Array<{ action: ActionDefinition; result: ReturnType<typeof executeAction> }> = [];
 
-    auditTrail.push({
-      id: env.createId("AUDIT"),
-      workflowRunId: run.id,
-      workflowVersion: workflow.version,
-      timestamp: env.now(),
-      eventType: "action_completed",
-      stateId: state.id,
-      actionId: action.id,
-      metadata: { actionName: action.name, output: actionRes.output },
-    });
+      for (const action of state.activeActions || []) {
+        auditTrail.push({
+          id: env.createId("AUDIT"),
+          workflowRunId: run.id,
+          workflowVersion: workflow.version,
+          timestamp: env.now(),
+          eventType: "action_started",
+          stateId: state.id,
+          actionId: action.id,
+          metadata: { actionName: action.name, phase: "active", executionMode: "parallel" },
+        });
+
+        const actionRes = executeAction(action, snapshotContext, env);
+
+        if (actionRes.status === "failure") {
+          failedActions += 1;
+          hasFailed = true;
+          auditTrail.push({
+            id: env.createId("AUDIT"),
+            workflowRunId: run.id,
+            workflowVersion: workflow.version,
+            timestamp: env.now(),
+            eventType: "action_failed",
+            stateId: state.id,
+            actionId: action.id,
+            metadata: { actionName: action.name, error: actionRes.error, phase: "active" },
+          });
+          auditTrail.push({
+            id: env.createId("AUDIT"),
+            workflowRunId: run.id,
+            workflowVersion: workflow.version,
+            timestamp: env.now(),
+            eventType: "workflow_failed",
+            stateId: state.id,
+            metadata: { reason: `Parallel action "${action.name}" (${action.id}) failed: ${actionRes.error}` },
+          });
+          break;
+        } else {
+          completedActions += 1;
+          parallelOutputs.push({ action, result: actionRes });
+          auditTrail.push({
+            id: env.createId("AUDIT"),
+            workflowRunId: run.id,
+            workflowVersion: workflow.version,
+            timestamp: env.now(),
+            eventType: "action_completed",
+            stateId: state.id,
+            actionId: action.id,
+            metadata: { actionName: action.name, output: actionRes.output, phase: "active" },
+          });
+        }
+      }
+
+      if (!hasFailed) {
+        // Merge outputs of all parallel actions into currentContext
+        for (const item of parallelOutputs) {
+          currentContext = applyActionOutputToContext(currentContext, item.action, item.result);
+        }
+      }
+    } else {
+      for (const action of state.activeActions || []) {
+        runActionSequential(action, "active");
+        if (hasFailed) break;
+      }
+    }
   }
 
   // Determine updated run status
+  if (hasFailed) {
+    return {
+      ...run,
+      status: "failed",
+      context: currentContext,
+      completedActionCount: completedActions,
+      failedActionCount: failedActions,
+      auditTrail,
+    };
+  }
+
   let newStatus = run.status;
   let completedAt = run.completedAt;
   let pendingApproval = run.pendingApproval;
@@ -161,7 +278,8 @@ export function executeStateLifecycle(
         (a) => a.type === "human_task"
       );
       const role = humanTask?.humanTaskConfig?.assigneeRole || "Reviewer";
-      const dueAt = now;
+      const dueHours = humanTask?.humanTaskConfig?.dueHours || 24;
+      const dueAt = env.addMilliseconds(now, dueHours * 60 * 60 * 1000);
 
       pendingApproval = {
         assigneeRole: role,
@@ -194,6 +312,7 @@ export function executeStateLifecycle(
     pendingApproval,
     context: currentContext,
     completedActionCount: completedActions,
+    failedActionCount: failedActions,
     auditTrail,
   };
 }
@@ -258,22 +377,71 @@ export function dispatchWorkflowEvent(
     });
   }
 
+  let failedActions = currentRunWithPayload.failedActionCount;
+
   // 2. Execute Exit Actions of source state
   for (const action of plan.plannedExitActions || []) {
-    const actionRes = executeAction(action, currentContext, env);
-    completedActions += 1;
-    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
-
     auditTrail.push({
       id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: env.now(),
-      eventType: "action_completed",
+      eventType: "action_started",
       stateId: sourceState.id,
       actionId: action.id,
-      metadata: { actionName: action.name, output: actionRes.output, phase: "exit" },
+      metadata: { actionName: action.name, phase: "exit" },
     });
+
+    const actionRes = executeAction(action, currentContext, env);
+
+    if (actionRes.status === "failure") {
+      failedActions += 1;
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "action_failed",
+        stateId: sourceState.id,
+        actionId: action.id,
+        metadata: { actionName: action.name, error: actionRes.error, phase: "exit" },
+      });
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "workflow_failed",
+        stateId: sourceState.id,
+        metadata: { reason: `Exit action "${action.name}" (${action.id}) failed: ${actionRes.error}` },
+      });
+
+      return {
+        updatedRun: {
+          ...currentRunWithPayload,
+          status: "failed",
+          context: currentContext,
+          completedActionCount: completedActions,
+          failedActionCount: failedActions,
+          auditTrail,
+        },
+        transitionTaken: selectedTransition,
+        plan,
+      };
+    } else {
+      completedActions += 1;
+      currentContext = applyActionOutputToContext(currentContext, action, actionRes);
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "action_completed",
+        stateId: sourceState.id,
+        actionId: action.id,
+        metadata: { actionName: action.name, output: actionRes.output, phase: "exit" },
+      });
+    }
   }
 
   // 3. Audit State Exit
@@ -290,20 +458,67 @@ export function dispatchWorkflowEvent(
 
   // 4. Execute Transition Actions
   for (const action of plan.plannedTransitionActions || []) {
-    const actionRes = executeAction(action, currentContext, env);
-    completedActions += 1;
-    currentContext = applyActionOutputToContext(currentContext, action, actionRes);
-
     auditTrail.push({
       id: env.createId("AUDIT"),
       workflowRunId: run.id,
       workflowVersion: workflow.version,
       timestamp: env.now(),
-      eventType: "action_completed",
+      eventType: "action_started",
       stateId: sourceState.id,
       actionId: action.id,
-      metadata: { actionName: action.name, output: actionRes.output, phase: "transition" },
+      metadata: { actionName: action.name, phase: "transition" },
     });
+
+    const actionRes = executeAction(action, currentContext, env);
+
+    if (actionRes.status === "failure") {
+      failedActions += 1;
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "action_failed",
+        stateId: sourceState.id,
+        actionId: action.id,
+        metadata: { actionName: action.name, error: actionRes.error, phase: "transition" },
+      });
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "workflow_failed",
+        stateId: sourceState.id,
+        metadata: { reason: `Transition action "${action.name}" (${action.id}) failed: ${actionRes.error}` },
+      });
+
+      return {
+        updatedRun: {
+          ...currentRunWithPayload,
+          status: "failed",
+          context: currentContext,
+          completedActionCount: completedActions,
+          failedActionCount: failedActions,
+          auditTrail,
+        },
+        transitionTaken: selectedTransition,
+        plan,
+      };
+    } else {
+      completedActions += 1;
+      currentContext = applyActionOutputToContext(currentContext, action, actionRes);
+      auditTrail.push({
+        id: env.createId("AUDIT"),
+        workflowRunId: run.id,
+        workflowVersion: workflow.version,
+        timestamp: env.now(),
+        eventType: "action_completed",
+        stateId: sourceState.id,
+        actionId: action.id,
+        metadata: { actionName: action.name, output: actionRes.output, phase: "transition" },
+      });
+    }
   }
 
   // 5. Audit Transition Taken

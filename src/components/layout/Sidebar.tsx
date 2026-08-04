@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState, useCallback } from "react";
 import {
   Play,
   Layers,
@@ -7,12 +7,11 @@ import {
   Hourglass,
   UserCheck,
   CheckCircle2,
-  AlertTriangle,
   Plus,
-  ShieldCheck,
-  Zap,
+  ChevronLeft,
 } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
+import { useLayoutStore } from "../../store/layoutStore";
 import { WorkflowState, StateType } from "../../types/workflow";
 
 export const Sidebar: React.FC = () => {
@@ -24,7 +23,42 @@ export const Sidebar: React.FC = () => {
     setSelectedStateId,
   } = useWorkflowStore();
 
+  const {
+    sidebarWidth,
+    setSidebarWidth,
+    isSidebarOpen,
+    toggleSidebar,
+  } = useLayoutStore();
+
+  const [isResizing, setIsResizing] = useState(false);
+
   const activeWorkflow = workflows.find((w) => w.id === activeWorkflowId);
+
+  const startResizing = useCallback(
+    (mouseDownEvent: React.MouseEvent) => {
+      mouseDownEvent.preventDefault();
+      setIsResizing(true);
+
+      const startX = mouseDownEvent.clientX;
+      const startWidth = sidebarWidth;
+
+      const onMouseMove = (mouseMoveEvent: MouseEvent) => {
+        const currentX = mouseMoveEvent.clientX;
+        const newWidth = startWidth + (currentX - startX);
+        setSidebarWidth(newWidth);
+      };
+
+      const onMouseUp = () => {
+        setIsResizing(false);
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    },
+    [sidebarWidth, setSidebarWidth]
+  );
 
   const handleAddState = (type: StateType, name: string) => {
     if (!activeWorkflow) return;
@@ -77,16 +111,44 @@ export const Sidebar: React.FC = () => {
     addState(activeWorkflow.id, newState);
   };
 
+  if (!isSidebarOpen) {
+    return null;
+  }
+
   return (
-    <aside className="w-64 bg-black/30 backdrop-blur-xl border-r border-white/10 flex flex-col h-full text-xs select-none z-20">
+    <aside
+      style={{ width: `${sidebarWidth}px` }}
+      className="relative bg-black/30 backdrop-blur-xl border-r border-white/10 flex flex-col h-full text-xs select-none z-20 shrink-0 transition-[width] duration-75"
+    >
+      {/* Adjustable Resizer Handle on Right Edge */}
+      <div
+        onMouseDown={startResizing}
+        onDoubleClick={() => setSidebarWidth(260)}
+        title="Drag edge to adjust palette drawer width (Double-click to reset)"
+        className={`absolute top-0 right-0 w-2.5 h-full cursor-col-resize z-30 group flex items-center justify-center transition-colors ${
+          isResizing ? "bg-cyan-500/40" : "hover:bg-cyan-500/20"
+        }`}
+      >
+        <div className="w-0.5 h-10 rounded-full bg-white/20 group-hover:bg-cyan-400 group-hover:shadow-[0_0_8px_#22d3ee] transition-all" />
+      </div>
+
       {/* Palette Header */}
-      <div className="p-4 border-b border-white/10 bg-white/5">
-        <h3 className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold font-mono">
-          State Palette
-        </h3>
-        <p className="text-[10px] text-slate-400 mt-1 font-mono">
-          Select or add state machine step
-        </p>
+      <div className="p-3.5 border-b border-white/10 bg-white/5 flex items-center justify-between">
+        <div>
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold font-mono">
+            State Palette
+          </h3>
+          <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+            Select or add step
+          </p>
+        </div>
+        <button
+          onClick={toggleSidebar}
+          className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/10 transition-colors cursor-pointer"
+          title="Collapse State Palette Drawer"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
       </div>
 
       {/* State Types List */}
@@ -156,18 +218,18 @@ export const Sidebar: React.FC = () => {
               onClick={() => handleAddState(item.type as StateType, item.label)}
               className={`w-full p-2.5 rounded-xl bg-white/5 border border-white/10 ${item.bg} text-left transition-all flex items-center justify-between group backdrop-blur-sm cursor-pointer`}
             >
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-black/40 border border-white/10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-lg bg-black/40 border border-white/10 shrink-0">
                   <Icon className={`w-4 h-4 ${item.color}`} />
                 </div>
-                <div>
-                  <div className="font-semibold text-slate-200 group-hover:text-cyan-400 transition-colors">
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-200 group-hover:text-cyan-400 transition-colors truncate">
                     {item.label}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-mono">{item.desc}</div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate">{item.desc}</div>
                 </div>
               </div>
-              <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400" />
+              <Plus className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 shrink-0 ml-1" />
             </button>
           );
         })}
@@ -187,7 +249,7 @@ export const Sidebar: React.FC = () => {
         {validationIssues.length === 0 ? (
           <div className="text-[10px] text-emerald-400 flex items-center gap-1.5 font-mono bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Deterministic state clean</span>
+            <span className="truncate">Deterministic state clean</span>
           </div>
         ) : (
           <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">

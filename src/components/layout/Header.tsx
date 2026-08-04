@@ -10,8 +10,13 @@ import {
   Package,
   Settings,
   List,
+  PanelLeft,
+  PanelRight,
+  Menu,
+  X,
 } from "lucide-react";
 import { useWorkflowStore, NavigationTab } from "../../store/workflowStore";
+import { useLayoutStore } from "../../store/layoutStore";
 import { DescribeWorkflowModal } from "../ai/DescribeWorkflowModal";
 import { ThemeSelector } from "../theme/ThemeSelector";
 
@@ -26,7 +31,15 @@ export const Header: React.FC = () => {
     startNewRun,
   } = useWorkflowStore();
 
+  const {
+    isSidebarOpen,
+    toggleSidebar,
+    isInspectorOpen,
+    toggleInspector,
+  } = useLayoutStore();
+
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const activeWorkflow = workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
   const errorCount = validationIssues.filter((i) => i.severity === "error").length;
@@ -34,14 +47,42 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="h-14 bg-black/40 backdrop-blur-xl border-b border-white/10 px-6 flex items-center justify-between text-xs select-none z-30 relative">
-        {/* Brand & Workflow Selector */}
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-9 h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.25)] shrink-0">
-              <Layers className="w-5 h-5 text-cyan-400" />
+      <header className="h-14 bg-black/40 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 flex items-center justify-between text-xs select-none z-30 relative gap-2">
+        {/* Brand, Drawer Toggles & Workflow Selector */}
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          {/* Drawer Toggle Controls (Designer tab) */}
+          {activeTab === "designer" && (
+            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
+              <button
+                onClick={toggleSidebar}
+                className={`p-1.5 rounded transition-all cursor-pointer ${
+                  isSidebarOpen
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                    : "text-slate-400 hover:text-slate-100"
+                }`}
+                title="Toggle Left State Palette Drawer"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={toggleInspector}
+                className={`p-1.5 rounded transition-all cursor-pointer ${
+                  isInspectorOpen
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                    : "text-slate-400 hover:text-slate-100"
+                }`}
+                title="Toggle Right State Inspector Drawer"
+              >
+                <PanelRight className="w-4 h-4" />
+              </button>
             </div>
-            <div className="flex flex-col">
+          )}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.25)] shrink-0">
+              <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+            </div>
+            <div className="hidden md:flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="font-black tracking-[0.2em] text-sm text-white font-mono uppercase drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
                   PASSAGE
@@ -53,13 +94,13 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          <div className="h-5 w-px bg-white/10 shrink-0" />
+          <div className="hidden lg:block h-5 w-px bg-white/10 shrink-0" />
 
           {/* Workflow Picker */}
           <select
             value={activeWorkflowId}
             onChange={(e) => setActiveWorkflowId(e.target.value)}
-            className="bg-white/5 border border-white/10 hover:border-cyan-500/50 text-slate-200 font-semibold text-xs px-3 py-1.5 rounded-lg outline-none font-mono focus:border-cyan-400 transition-colors"
+            className="bg-white/5 border border-white/10 hover:border-cyan-500/50 text-slate-200 font-semibold text-xs px-2.5 py-1.5 rounded-lg outline-none font-mono focus:border-cyan-400 transition-colors max-w-[140px] sm:max-w-[200px] truncate"
           >
             {workflows.map((wf) => (
               <option key={wf.id} value={wf.id} className="bg-[#020617] text-slate-200">
@@ -67,14 +108,10 @@ export const Header: React.FC = () => {
               </option>
             ))}
           </select>
-
-          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono text-[9px] uppercase font-bold tracking-wider">
-            {activeWorkflow?.status || "Published"}
-          </span>
         </div>
 
-        {/* Main Navigation Tabs */}
-        <div className="flex items-center bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-sm">
+        {/* Main Navigation Tabs - Desktop */}
+        <div className="hidden md:flex items-center bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-sm max-w-full overflow-x-auto no-scrollbar">
           {[
             { id: "designer", label: "Designer", icon: Layers },
             { id: "runs", label: "Runs", icon: Activity },
@@ -89,7 +126,7 @@ export const Header: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as NavigationTab)}
-                className={`px-3 py-1 rounded-lg font-mono text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                className={`px-2.5 sm:px-3 py-1 rounded-lg font-mono text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-[0_0_12px_rgba(34,211,238,0.2)]"
                     : "text-slate-400 hover:text-slate-100"
@@ -103,13 +140,15 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Action Controls & Validation Status */}
-        <div className="flex items-center gap-3">
-          {/* Theme / Skin Switcher */}
-          <ThemeSelector />
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Theme Selector */}
+          <div className="hidden sm:block">
+            <ThemeSelector />
+          </div>
 
           {/* Validation Pill */}
           <div
-            className={`px-3 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border flex items-center gap-1.5 ${
+            className={`hidden xl:flex px-2.5 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border items-center gap-1.5 ${
               errorCount > 0
                 ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
                 : warningCount > 0
@@ -126,7 +165,7 @@ export const Header: React.FC = () => {
               {errorCount > 0
                 ? `${errorCount} ERRORS`
                 : warningCount > 0
-                ? `${warningCount} WARNINGS`
+                ? `${warningCount} WARN`
                 : "VALIDATED"}
             </span>
           </div>
@@ -134,25 +173,76 @@ export const Header: React.FC = () => {
           {/* AI Workflow Creator */}
           <button
             onClick={() => setIsAiModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Describe (AI)</span>
+            <span className="hidden sm:inline">Describe (AI)</span>
           </button>
 
           {/* Run / Simulate */}
           <button
             onClick={() => {
-              startNewRun(activeWorkflow.id);
-              setActiveTab("runs");
+              if (activeWorkflow) {
+                startNewRun(activeWorkflow.id);
+                setActiveTab("runs");
+              }
             }}
-            className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all cursor-pointer"
+            className="px-3 sm:px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-slate-950" />
-            <span>Simulate Case</span>
+            <span className="hidden sm:inline">Simulate Case</span>
+          </button>
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white cursor-pointer"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </header>
+
+      {/* Mobile Navigation Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-slate-950/95 border-b border-white/10 backdrop-blur-2xl p-4 space-y-2 z-40 relative font-mono text-xs">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { id: "designer", label: "Designer", icon: Layers },
+              { id: "runs", label: "Runs", icon: Activity },
+              { id: "workflows", label: "Workflows", icon: List },
+              { id: "connections", label: "Connections", icon: Plug },
+              { id: "components", label: "Components", icon: Package },
+              { id: "settings", label: "Governance", icon: Settings },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as NavigationTab);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`p-2.5 rounded-xl font-semibold flex items-center gap-2 border transition-all ${
+                    isActive
+                      ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/40"
+                      : "bg-white/5 text-slate-300 border-white/10"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 text-cyan-400" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+            <span className="text-slate-400">Theme Skin</span>
+            <ThemeSelector />
+          </div>
+        </div>
+      )}
 
       <DescribeWorkflowModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
     </>

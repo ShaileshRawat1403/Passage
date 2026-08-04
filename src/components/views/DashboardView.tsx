@@ -3,11 +3,8 @@ import {
   Activity,
   Layers,
   Clock,
-  AlertTriangle,
   Play,
   ArrowUpRight,
-  TrendingUp,
-  ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
@@ -21,21 +18,21 @@ export const DashboardView: React.FC = () => {
   const completedRuns = activeRuns.filter((r) => r.status === "completed").length;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-8 text-xs">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6 sm:space-y-8 text-xs">
       {/* Welcome Banner */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-mono text-slate-100 tracking-wider uppercase">
+          <h1 className="text-xl sm:text-2xl font-bold font-mono text-slate-100 tracking-wider uppercase">
             Passage Operational Dashboard
           </h1>
-          <p className="text-slate-400 text-sm mt-1 font-sans">
+          <p className="text-slate-400 text-xs sm:text-sm mt-1 font-sans">
             Durable visual state-machine execution metrics and live case telemetry.
           </p>
         </div>
 
         <button
           onClick={() => setActiveTab("designer")}
-          className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all text-xs cursor-pointer"
+          className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all text-xs cursor-pointer shrink-0"
         >
           <Play className="w-4 h-4 fill-slate-950" />
           <span>Open Designer</span>
@@ -43,7 +40,7 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
             title: "Active Workflows",
@@ -86,7 +83,7 @@ export const DashboardView: React.FC = () => {
           return (
             <div
               key={idx}
-              className={`p-5 rounded-2xl bg-black/30 backdrop-blur-xl border ${m.border} shadow-2xl space-y-3`}
+              className={`p-4 sm:p-5 rounded-2xl bg-black/30 backdrop-blur-xl border ${m.border} shadow-2xl space-y-3`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 font-mono text-[10px] uppercase tracking-wider">{m.title}</span>
@@ -104,7 +101,7 @@ export const DashboardView: React.FC = () => {
       {/* Workflow Process Cards */}
       <div className="space-y-4">
         <h2 className="font-bold font-mono text-sm uppercase tracking-wider text-slate-200">Configured Workflow Maps</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.map((wf) => (
             <div
               key={wf.id}

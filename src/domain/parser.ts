@@ -39,8 +39,18 @@ export function parseWorkflowDefinition(input: unknown): ParseWorkflowResult {
   if (!raw.updatedAt) raw.updatedAt = new Date().toISOString();
 
   // Normalize legacy 'initialState' -> 'initialStateId'
-  if (!raw.initialStateId && raw.initialState) {
-    raw.initialStateId = typeof raw.initialState === "string" ? raw.initialState : raw.initialState.id;
+  if (raw.initialState) {
+    const normalizedInitialState =
+      typeof raw.initialState === "string" ? raw.initialState : raw.initialState.id;
+    if (!raw.initialStateId) {
+      raw.initialStateId = normalizedInitialState;
+    }
+    delete raw.initialState;
+  }
+
+  // Remove top-level extra metadata fields (e.g. questions from AI endpoint)
+  if ("questions" in raw) {
+    delete raw.questions;
   }
 
   if (Array.isArray(raw.states)) {

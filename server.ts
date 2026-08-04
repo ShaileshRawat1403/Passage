@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
+import { parseWorkflowDefinition } from "./src/domain/parser";
+
 dotenv.config();
 
 async function startServer() {
@@ -51,7 +53,7 @@ async function startServer() {
       }
 
       const ai = getGeminiClient();
-      const prompt = `You are a workflow architect expert for Stateflow (a visual state-machine workflow engine).
+      const prompt = `You are a workflow architect expert for Passage (a durable visual state-machine workflow engine).
 The user wants to generate a complete workflow based on this description:
 "${description}"
 
@@ -59,19 +61,29 @@ Output a JSON object matching this TypeScript structure:
 {
   "name": string (workflow name),
   "description": string (brief summary),
-  "initialState": string (id of start state),
+  "initialStateId": string (id of start state),
   "states": [
     {
       "id": string (kebab-case id),
       "name": string (human label),
       "description": string,
       "type": "start" | "atomic" | "decision" | "parallel" | "waiting" | "approval" | "final",
-      "entryActions": [{ "id": string, "name": string, "type": "audit"|"http"|"agent"|"notification"|"human_task"|"wait" }],
-      "activeActions": [{ "id": string, "name": string, "type": "audit"|"http"|"agent"|"notification"|"human_task"|"wait" }],
+      "entryActions": [
+        {
+          "id": string,
+          "name": string,
+          "type": "audit" | "http" | "agent" | "notification" | "human_task" | "wait",
+          "httpConfig": { "method": "GET"|"POST", "url": string }, // required if type == 'http'
+          "agentConfig": { "agentName": string, "modelProvider": "Google DeepMind", "model": "gemini-3.6-flash", "systemInstructions": string }, // required if type == 'agent'
+          "humanTaskConfig": { "assigneeRole": string, "dueHours": number, "options": ["APPROVE","REJECT"] } // required if type == 'human_task'
+        }
+      ],
+      "activeActions": [],
       "exitActions": [],
       "transitions": [
         {
           "id": string,
+          "sourceStateId": string (id of this state),
           "targetStateId": string,
           "event": string (e.g. WORKFLOW_STARTED, VALIDATION_PASSED, APPROVAL_RECEIVED, REJECTION_RECEIVED, TIMEOUT_REACHED),
           "guard": {
@@ -80,7 +92,7 @@ Output a JSON object matching this TypeScript structure:
             "description": string,
             "logic": "ALL" | "ANY",
             "conditions": [
-              { "field": string, "operator": "equals" | "greater_than" | "less_than" | "is_true", "value": any }
+              { "id": string, "field": string, "operator": "equals" | "greater_than" | "less_than" | "is_true", "value": any }
             ]
           }
         }
@@ -92,7 +104,7 @@ Output a JSON object matching this TypeScript structure:
 }
 
 IMPORTANT: Ensure there is exactly 1 'start' state, at least 1 'final' state, valid outgoing transitions for intermediate states, and meaningful state IDs.
-Respond strictly with valid JSON. Do NOT include markdown code blocks if possible or return pure JSON.`;
+Respond strictly with valid JSON. Do NOT include markdown code blocks.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.6-flash",
@@ -104,7 +116,23 @@ Respond strictly with valid JSON. Do NOT include markdown code blocks if possibl
 
       const text = response.text || "{}";
       const parsed = JSON.parse(text);
-      res.json(parsed);
+      const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+
+      // Validate through Passage boundary parser
+      const parseResult = parseWorkflowDefinition(parsed);
+      if (!parseResult.success || !parseResult.workflow) {
+        res.status(422).json({
+          error: "Generated workflow failed contract validation.",
+          errors: parseResult.errors,
+          issues: parseResult.issues,
+        });
+        return;
+      }
+
+      res.json({
+        ...parseResult.workflow,
+        questions,
+      });
     } catch (err: any) {
       console.error("Workflow Generation Error:", err);
       res.status(500).json({ error: err.message || "Failed to generate workflow" });

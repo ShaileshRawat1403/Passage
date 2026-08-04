@@ -74,11 +74,12 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
       });
     }
 
-    if (startStates.length === 1 && startStates[0].id !== workflow.initialStateId) {
+    const firstStart = startStates[0];
+    if (startStates.length === 1 && firstStart && firstStart.id !== workflow.initialStateId) {
       issues.push({
         id: "err-initial-start-mismatch",
         severity: "error",
-        message: `Workflow initialStateId ("${workflow.initialStateId}") does not match the single Start state ID ("${startStates[0].id}").`,
+        message: `Workflow initialStateId ("${workflow.initialStateId}") does not match the single Start state ID ("${firstStart.id}").`,
       });
     }
   }
@@ -168,9 +169,20 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
 
     // Check parallel policy required actions
     if (state.type === "parallel" && state.parallelPolicy?.requiredActionIds) {
+      const stateActionIds = new Set([
+        ...(state.entryActions || []),
+        ...(state.activeActions || []),
+        ...(state.exitActions || []),
+      ].map((a) => a.id).filter(Boolean));
+
       for (const reqId of state.parallelPolicy.requiredActionIds) {
-        if (!actionIds.has(reqId)) {
-          // Note: might be validated later if action declared afterwards, checked after loop
+        if (!stateActionIds.has(reqId)) {
+          issues.push({
+            id: `err-parallel-req-action-missing-${state.id}-${reqId}`,
+            severity: "error",
+            stateId: state.id,
+            message: `Parallel policy in state "${state.name}" requires action "${reqId}", but this action is not defined within state "${state.name}".`,
+          });
         }
       }
     }
@@ -317,8 +329,9 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
   }
 
   // 4. Unreachable states detection
-  if (startStates.length === 1) {
-    const startId = startStates[0].id;
+  const firstStart = startStates[0];
+  if (startStates.length === 1 && firstStart) {
+    const startId = firstStart.id;
     const visited = new Set<string>();
 
     const dfs = (id: string) => {

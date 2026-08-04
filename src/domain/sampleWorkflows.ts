@@ -343,6 +343,10 @@ export const vendorInvoiceWorkflow: WorkflowDefinition = {
           id: "act-disburse",
           name: "Trigger ERP Disbursement API",
           type: "http",
+          httpConfig: {
+            method: "POST",
+            url: "/api/erp/disburse",
+          },
         },
       ],
       activeActions: [],
@@ -689,6 +693,10 @@ export const incidentTriageWorkflow: WorkflowDefinition = {
           id: "act-pagerduty",
           name: "Trigger PagerDuty High Alert",
           type: "http",
+          httpConfig: {
+            method: "POST",
+            url: "/api/pagerduty/trigger",
+          },
         },
       ],
       activeActions: [],
@@ -716,7 +724,15 @@ export const incidentTriageWorkflow: WorkflowDefinition = {
       position: { x: 980, y: 420 },
       entryActions: [],
       activeActions: [
-        { id: "act-[#restart]", name: "Restart Unhealthy Pod Replicas", type: "http" },
+        {
+          id: "act-restart-pods",
+          name: "Restart Unhealthy Pod Replicas",
+          type: "http",
+          httpConfig: {
+            method: "POST",
+            url: "/api/k8s/restart-pods",
+          },
+        },
       ],
       exitActions: [],
       transitions: [

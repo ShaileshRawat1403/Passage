@@ -128,7 +128,19 @@ export function planTransition(params: {
   // Sort descending by priority (default priority is 0)
   eligibleTransitions.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-  const highestPriority = eligibleTransitions[0].priority || 0;
+  const topTransition = eligibleTransitions[0];
+  if (!topTransition) {
+    return {
+      status: "blocked",
+      eventName,
+      sourceState,
+      candidateTransitions: candidates,
+      guardResults,
+      error: `No eligible transitions found for event "${eventName}".`,
+    };
+  }
+
+  const highestPriority = topTransition.priority || 0;
   const topPriorityMatches = eligibleTransitions.filter(
     (t) => (t.priority || 0) === highestPriority
   );
@@ -148,6 +160,17 @@ export function planTransition(params: {
   }
 
   const selectedTransition = topPriorityMatches[0];
+  if (!selectedTransition) {
+    return {
+      status: "blocked",
+      eventName,
+      sourceState,
+      candidateTransitions: candidates,
+      guardResults,
+      error: `Failed to resolve selected transition for event "${eventName}".`,
+    };
+  }
+
   const targetState = workflow.states.find((s) => s.id === selectedTransition.targetStateId);
 
   if (!targetState) {
