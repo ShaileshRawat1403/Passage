@@ -19,6 +19,7 @@ import { useWorkflowStore, NavigationTab } from "../../store/workflowStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { DescribeWorkflowModal } from "../ai/DescribeWorkflowModal";
 import { ThemeSelector } from "../theme/ThemeSelector";
+import { getWorkflowReadiness } from "../../domain/validation";
 
 export const Header: React.FC = () => {
   const {
@@ -146,29 +147,47 @@ export const Header: React.FC = () => {
             <ThemeSelector />
           </div>
 
-          {/* Validation Pill */}
-          <div
-            className={`hidden xl:flex px-2.5 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border items-center gap-1.5 ${
-              errorCount > 0
-                ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                : warningCount > 0
+          {/* Lifecycle Status Pill */}
+          {activeWorkflow && (
+            <div className="hidden lg:flex px-2 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border items-center gap-1 bg-white/5 border-white/10 text-slate-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+              <span>Status: {activeWorkflow.status}</span>
+            </div>
+          )}
+
+          {/* Derived Readiness Pill */}
+          {activeWorkflow && (() => {
+            const readiness = getWorkflowReadiness(activeWorkflow);
+            const badgeStyles =
+              readiness === "executable"
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                : readiness === "structurally_valid"
                 ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-            }`}
-          >
-            {errorCount > 0 ? (
-              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-            ) : (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            )}
-            <span>
-              {errorCount > 0
-                ? `${errorCount} ERRORS`
-                : warningCount > 0
-                ? `${warningCount} WARN`
-                : "VALIDATED"}
-            </span>
-          </div>
+                : "bg-rose-500/10 text-rose-400 border-rose-500/30";
+
+            const label =
+              readiness === "executable"
+                ? "Executable"
+                : readiness === "structurally_valid"
+                ? "Structurally Valid"
+                : "Incomplete Draft";
+
+            return (
+              <div
+                className={`hidden xl:flex px-2.5 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border items-center gap-1.5 ${badgeStyles}`}
+                title={`Workflow Readiness: ${label}`}
+              >
+                {readiness === "executable" ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : readiness === "structurally_valid" ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                )}
+                <span>{label}</span>
+              </div>
+            );
+          })()}
 
           {/* AI Workflow Creator */}
           <button

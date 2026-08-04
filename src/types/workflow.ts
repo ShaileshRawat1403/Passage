@@ -180,6 +180,8 @@ export interface WorkflowState {
   childStates?: WorkflowState[];
 }
 
+export type WorkflowReadiness = "incomplete" | "structurally_valid" | "executable";
+
 export interface WorkflowDefinition {
   id: string;
   name: string;

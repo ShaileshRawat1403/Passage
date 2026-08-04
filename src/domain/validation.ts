@@ -1,5 +1,6 @@
-import { WorkflowDefinition, ValidationIssue, ActionDefinition } from "../types/workflow";
+import { WorkflowDefinition, ValidationIssue, ActionDefinition, WorkflowReadiness } from "../types/workflow";
 import { WorkflowDefinitionSchema } from "./schemas";
+import { parseWorkflowDefinition } from "./parser";
 
 /**
  * Validates a workflow definition deterministically and comprehensively
@@ -360,3 +361,34 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
 
   return issues;
 }
+
+/**
+ * Derives workflow readiness (incomplete, structurally_valid, executable)
+ */
+export function getWorkflowReadiness(workflow: WorkflowDefinition): WorkflowReadiness {
+  const parseResult = parseWorkflowDefinition(workflow);
+  if (!parseResult.success) {
+    return "incomplete";
+  }
+
+  const issues = validateWorkflow(workflow);
+  const hasErrors = issues.some((i) => i.severity === "error");
+  if (hasErrors) {
+    return "incomplete";
+  }
+
+  const hasPlaceholders = (workflow.states || []).some((st) =>
+    (st.transitions || []).some(
+      (tr) => !tr.event || tr.event === "EVENT_REQUIRED" || tr.event === "NEXT_EVENT"
+    )
+  );
+
+  const hasWarnings = issues.some((i) => i.severity === "warning");
+
+  if (hasPlaceholders || hasWarnings) {
+    return "structurally_valid";
+  }
+
+  return "executable";
+}
+

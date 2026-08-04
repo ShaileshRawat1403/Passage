@@ -52,6 +52,10 @@ const WorkflowCanvasInner: React.FC = () => {
     setSelectedTransitionId,
     updateStatePosition,
     addTransition,
+    deleteSelection,
+    copySelection,
+    pasteSelection,
+    duplicateState,
   } = useWorkflowStore();
 
   const activeWorkflow = useMemo(() => {
@@ -127,16 +131,83 @@ const WorkflowCanvasInner: React.FC = () => {
     [setSelectedTransitionId]
   );
 
+  // Handle Node Deletion
+  const onNodesDelete = useCallback(
+    (deletedNodes: Node[]) => {
+      if (!activeWorkflow) return;
+      deleteSelection(
+        activeWorkflow.id,
+        deletedNodes.map((n) => n.id),
+        []
+      );
+    },
+    [activeWorkflow, deleteSelection]
+  );
+
+  // Handle Edge Deletion
+  const onEdgesDelete = useCallback(
+    (deletedEdges: Edge[]) => {
+      if (!activeWorkflow) return;
+      deleteSelection(
+        activeWorkflow.id,
+        [],
+        deletedEdges.map((e) => e.id)
+      );
+    },
+    [activeWorkflow, deleteSelection]
+  );
+
+  // Keyboard Shortcuts (Copy / Paste / Duplicate)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!activeWorkflow) return;
+      const isInput =
+        ["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName) ||
+        (e.target as HTMLElement)?.isContentEditable;
+      if (isInput) return;
+
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (modifier && e.key.toLowerCase() === "c") {
+        if (selectedStateId || selectedTransitionId) {
+          copySelection(
+            activeWorkflow.id,
+            selectedStateId ? [selectedStateId] : [],
+            selectedTransitionId ? [selectedTransitionId] : []
+          );
+        }
+      } else if (modifier && e.key.toLowerCase() === "v") {
+        pasteSelection(activeWorkflow.id);
+      } else if (modifier && e.key.toLowerCase() === "d") {
+        if (selectedStateId) {
+          e.preventDefault();
+          duplicateState(activeWorkflow.id, selectedStateId);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    activeWorkflow,
+    selectedStateId,
+    selectedTransitionId,
+    copySelection,
+    pasteSelection,
+    duplicateState,
+  ]);
+
   // Handle Connecting handles to create new Transition
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!activeWorkflow || !connection.source || !connection.target) return;
       const newTransition: TransitionDefinition = {
-        id: `tr-${Date.now()}`,
+        id: `tr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         name: "New Route",
         sourceStateId: connection.source,
         targetStateId: connection.target,
-        event: "NEXT_EVENT",
+        event: "EVENT_REQUIRED",
         priority: 10,
       };
       addTransition(activeWorkflow.id, newTransition);
@@ -161,6 +232,8 @@ const WorkflowCanvasInner: React.FC = () => {
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}

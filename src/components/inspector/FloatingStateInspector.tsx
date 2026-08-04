@@ -3,6 +3,7 @@ import {
   X,
   Plus,
   Trash2,
+  Copy,
   Zap,
   ArrowRight,
   Clock,
@@ -32,6 +33,7 @@ export const FloatingStateInspector: React.FC = () => {
     setSelectedStateId,
     setSelectedTransitionId,
     updateState,
+    duplicateState,
     deleteState,
     addActionToState,
     removeActionFromState,
@@ -303,16 +305,25 @@ export const FloatingStateInspector: React.FC = () => {
                       />
                     </div>
 
-                    <button
-                      onClick={() => {
-                        deleteState(activeWorkflowId, activeState.id);
-                        setSelectedStateId(null);
-                      }}
-                      className="w-full py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold flex items-center justify-center gap-1.5 transition-all mt-4 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      <span>Delete State Node</span>
-                    </button>
+                    <div className="flex items-center gap-2 mt-4">
+                      <button
+                        onClick={() => duplicateState(activeWorkflowId, activeState.id)}
+                        className="flex-1 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Duplicate</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          deleteState(activeWorkflowId, activeState.id);
+                          setSelectedStateId(null);
+                        }}
+                        className="flex-1 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Node</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
