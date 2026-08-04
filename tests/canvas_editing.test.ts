@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useWorkflowStore } from "../src/store/workflowStore";
+import { useWorkflowStore, resetWorkflowStore } from "../src/store/workflowStore";
 import { WorkflowDefinition, WorkflowState, ActionDefinition } from "../src/types/workflow";
 import { getWorkflowReadiness } from "../src/domain/readiness";
+import { cloneWorkflowSubgraph } from "../src/domain/clone";
 
 describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => {
   let testWorkflowId: string;
 
   beforeEach(() => {
-    // Reset store state with a clean test workflow
+    // Isolated store reset with deterministic ID factory
+    resetWorkflowStore();
     const newId = useWorkflowStore.getState().createWorkflow("Test Canvas Workflow", "P1.1 Test");
     testWorkflowId = newId;
   });
@@ -279,5 +281,138 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
     const stateAfter = useWorkflowStore.getState();
     expect(stateAfter.selectedStateIds).not.toContain("step-1");
     expect(stateAfter.selectedStateIds).toContain("start-1");
+  });
+
+  it("14. Reject updating transition target to a non-existent state", () => {
+    const store = useWorkflowStore.getState();
+    const wfBefore = store.workflows.find((w) => w.id === testWorkflowId)!;
+    const startState = wfBefore.states.find((s) => s.id === "start-1")!;
+    const originalTr = startState.transitions[0]!;
+
+    store.updateTransition(testWorkflowId, originalTr.id, {
+      targetStateId: "missing-target-999",
+    });
+
+    const wfAfter = useWorkflowStore.getState().workflows.find((w) => w.id === testWorkflowId)!;
+    const startAfter = wfAfter.states.find((s) => s.id === "start-1")!;
+    const trAfter = startAfter.transitions.find((t) => t.id === originalTr.id)!;
+
+    expect(trAfter.targetStateId).toBe(originalTr.targetStateId);
+    expect(trAfter.targetStateId).not.toBe("missing-target-999");
+  });
+
+  it("15. Switching workflows clears stale multi-selection arrays", () => {
+    useWorkflowStore.getState().setSelectedSelection(["start-1", "step-1"], ["tr-init"]);
+    expect(useWorkflowStore.getState().selectedStateIds).toEqual(["start-1", "step-1"]);
+    expect(useWorkflowStore.getState().selectedTransitionIds).toEqual(["tr-init"]);
+
+    // Switch to another workflow
+    const currentStore = useWorkflowStore.getState();
+    const otherWf = currentStore.workflows.find((w) => w.id !== testWorkflowId)!;
+    currentStore.setActiveWorkflowId(otherWf.id);
+
+    const storeAfter = useWorkflowStore.getState();
+    const expectedFirstState = otherWf.states[0]?.id;
+    expect(storeAfter.activeWorkflowId).toBe(otherWf.id);
+    expect(storeAfter.selectedStateIds).toEqual(expectedFirstState ? [expectedFirstState] : []);
+    expect(storeAfter.selectedTransitionIds).toEqual([]);
+  });
+
+  it("16. Clone remapping preserves transition-action IDs, compensation, and parallel requiredActionIds", () => {
+    const act1: ActionDefinition = {
+      id: "act-orig-1",
+      name: "Compensate Action",
+      type: "function",
+    };
+    const act2: ActionDefinition = {
+      id: "act-orig-2",
+      name: "Main Action",
+      type: "audit",
+      compensationActionId: "act-orig-1",
+    };
+
+    const stateWithParallel: WorkflowState = {
+      id: "st-parallel-1",
+      name: "Parallel Node",
+      type: "parallel",
+      entryActions: [act1, act2],
+      activeActions: [],
+      exitActions: [],
+      parallelPolicy: {
+        mode: "all",
+        requiredActionIds: ["act-orig-1", "act-orig-2"],
+      },
+      transitions: [],
+    };
+
+    const transitionWithAction = {
+      id: "tr-act-1",
+      sourceStateId: "st-parallel-1",
+      targetStateId: "end-1",
+      event: "NEXT",
+      actions: [
+        {
+          id: "tr-act-orig",
+          name: "Transition Log",
+          type: "notification" as const,
+        },
+      ],
+    };
+
+    const { states: clonedStates, transitions: clonedTransitions } = cloneWorkflowSubgraph(
+      [stateWithParallel],
+      [transitionWithAction],
+      { idGenerator: (prefix) => `${prefix}-clone-${Math.floor(Math.random() * 1000)}` }
+    );
+
+    expect(clonedStates.length).toBe(1);
+    expect(clonedTransitions.length).toBe(1);
+
+    const clonedState = clonedStates[0]!;
+    const clonedAct1 = clonedState.entryActions[0]!;
+    const clonedAct2 = clonedState.entryActions[1]!;
+
+    expect(clonedAct1.id).not.toBe("act-orig-1");
+    expect(clonedAct2.id).not.toBe("act-orig-2");
+
+    // Compensation reference should point to cloned act1 ID
+    expect(clonedAct2.compensationActionId).toBe(clonedAct1.id);
+
+    // Parallel requiredActionIds should point to cloned action IDs
+    expect(clonedState.parallelPolicy?.requiredActionIds).toEqual([clonedAct1.id, clonedAct2.id]);
+
+    // Transition action ID should be remapped
+    const clonedTr = clonedTransitions[0]!;
+    expect(clonedTr.actions?.[0]?.id).toBeDefined();
+    expect(clonedTr.actions?.[0]?.id).not.toBe("tr-act-orig");
+  });
+
+  it("17. Transition-only copying with multiple edges between same endpoints only copies selected edge", () => {
+    const store = useWorkflowStore.getState();
+
+    // Add a second transition between start-1 and step-1
+    store.addTransition(testWorkflowId, {
+      id: "tr-init-2",
+      sourceStateId: "start-1",
+      targetStateId: "step-1",
+      event: "SECOND_EVENT",
+    });
+
+    // Copy transition-only passing transitionIds = ["tr-init"] without stateIds
+    store.copySelection(testWorkflowId, [], ["tr-init"]);
+
+    const clip = useWorkflowStore.getState().copiedSelection;
+    expect(clip).toBeDefined();
+    expect(clip?.transitions.length).toBe(1);
+    expect(clip?.transitions[0]?.id).toBe("tr-init");
+
+    // Paste in workspace
+    store.pasteSelection(testWorkflowId);
+
+    const wfAfter = useWorkflowStore.getState().workflows.find((w) => w.id === testWorkflowId)!;
+    const pastedTransitions = wfAfter.states.flatMap((s) =>
+      (s.transitions || []).filter((t) => t.event === "WORKFLOW_STARTED")
+    );
+    expect(pastedTransitions.length).toBe(2);
   });
 });

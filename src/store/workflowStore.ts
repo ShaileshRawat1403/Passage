@@ -13,6 +13,7 @@ import { validateWorkflow } from "../domain/validation";
 import { parseWorkflowDefinition } from "../domain/parser";
 import { createWorkflowRun, dispatchWorkflowEvent } from "../domain/runtime";
 import { cloneWorkflowSubgraph } from "../domain/clone";
+import { generateDesignerId, resetDesignerIdFactory } from "../domain/idFactory";
 
 export type NavigationTab =
   | "workflows"
@@ -162,7 +163,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       set({
         activeWorkflowId: id,
         selectedStateId: firstState,
+        selectedStateIds: firstState ? [firstState] : [],
         selectedTransitionId: null,
+        selectedTransitionIds: [],
         validationIssues: issues,
       });
     }
@@ -261,7 +264,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   toggleAdvancedMode: () => set((s) => ({ isAdvancedMode: !s.isAdvancedMode })),
 
   createWorkflow: (name, description) => {
-    const newId = `wf-${Date.now()}`;
+    const newId = generateDesignerId("wf");
     const newWf: WorkflowDefinition = {
       id: newId,
       name: name || "New Workflow Process",
@@ -324,6 +327,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       workflows: [...state.workflows, newWf],
       activeWorkflowId: newId,
       selectedStateId: "step-1",
+      selectedStateIds: ["step-1"],
+      selectedTransitionId: null,
+      selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: validateWorkflow(newWf),
     }));
@@ -385,9 +391,15 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     set((state) => {
       const next = state.workflows.filter((w) => w.id !== id);
       const nextActive = next[0]?.id || "";
+      const activeWf = next.find((w) => w.id === nextActive);
+      const firstState = activeWf?.states[0]?.id || null;
       return {
         workflows: next,
         activeWorkflowId: nextActive,
+        selectedStateId: firstState,
+        selectedStateIds: firstState ? [firstState] : [],
+        selectedTransitionId: null,
+        selectedTransitionIds: [],
       };
     });
   },
@@ -408,9 +420,14 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     }
 
     const workflow = parseResult.workflow;
+    const firstState = workflow.states[0]?.id || null;
     set((state) => ({
       workflows: [workflow, ...state.workflows],
       activeWorkflowId: workflow.id,
+      selectedStateId: firstState,
+      selectedStateIds: firstState ? [firstState] : [],
+      selectedTransitionId: null,
+      selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: parseResult.issues,
     }));
@@ -506,7 +523,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   addTransition: (workflowId, transition) => {
     const trWithDefaults: TransitionDefinition = {
       ...transition,
-      id: transition.id || `tr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: transition.id || generateDesignerId("tr"),
       event: transition.event || "EVENT_REQUIRED",
       priority: transition.priority ?? 10,
     };
@@ -554,46 +571,45 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
       if (!currentTr || !currentSrcId) return;
 
-      // Check if sourceStateId is being changed
-      if (partial.sourceStateId && partial.sourceStateId !== currentSrcId) {
-        // Validate that requested new source state actually exists
-        const newSrcState = draft.states.find((s) => s.id === partial.sourceStateId);
-        if (!newSrcState) {
-          return; // Do NOT remove or mutate current transition if new source is invalid
-        }
+      const requestedSourceId = partial.sourceStateId ?? currentTr.sourceStateId;
+      const requestedTargetId = partial.targetStateId ?? currentTr.targetStateId;
 
-        // Remove from old state
+      const requestedSource = draft.states.find((state) => state.id === requestedSourceId);
+      const requestedTarget = draft.states.find((state) => state.id === requestedTargetId);
+
+      // Validate both proposed source and target state endpoints exist before mutating
+      if (!requestedSource || !requestedTarget) {
+        return;
+      }
+
+      if (requestedSourceId !== currentSrcId) {
+        // Remove from old source state
         const oldState = draft.states.find((s) => s.id === currentSrcId);
         if (oldState) {
           oldState.transitions = (oldState.transitions || []).filter((t) => t.id !== transitionId);
         }
 
-        // Update transition
+        // Add updated transition to new source state
         const updatedTr: TransitionDefinition = {
           ...currentTr,
           ...partial,
           id: currentTr.id,
-          sourceStateId: partial.sourceStateId,
-          targetStateId: partial.targetStateId ?? currentTr.targetStateId,
+          sourceStateId: requestedSourceId,
+          targetStateId: requestedTargetId,
         };
 
-        // Add to new source state
-        newSrcState.transitions = [...(newSrcState.transitions || []), updatedTr];
+        requestedSource.transitions = [...(requestedSource.transitions || []), updatedTr];
       } else {
         // Simple property update in existing source state
-        const srcState = draft.states.find((s) => s.id === currentSrcId);
-        if (srcState && srcState.transitions) {
-          const idx = srcState.transitions.findIndex((t) => t.id === transitionId);
-          const existingTr = srcState.transitions[idx];
-          if (idx >= 0 && existingTr) {
-            srcState.transitions[idx] = {
-              ...existingTr,
-              ...partial,
-              id: existingTr.id,
-              sourceStateId: partial.sourceStateId ?? existingTr.sourceStateId,
-              targetStateId: partial.targetStateId ?? existingTr.targetStateId,
-            };
-          }
+        const idx = requestedSource.transitions.findIndex((t) => t.id === transitionId);
+        if (idx >= 0 && requestedSource.transitions[idx]) {
+          requestedSource.transitions[idx] = {
+            ...requestedSource.transitions[idx],
+            ...partial,
+            id: currentTr.id,
+            sourceStateId: requestedSourceId,
+            targetStateId: requestedTargetId,
+          };
         }
       }
     });
@@ -628,6 +644,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     }
 
     const targetStates = wf.states.filter((s) => targetStateIdSet.has(s.id));
+    const isTransitionOnlyCopy = stateIds.length === 0 && transitionIds.length > 0;
 
     // Transitions are included when both endpoints are in targetStateIdSet
     const targetTransitions: TransitionDefinition[] = [];
@@ -637,8 +654,14 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
           targetStateIdSet.has(tr.sourceStateId) &&
           targetStateIdSet.has(tr.targetStateId)
         ) {
-          if (!targetTransitions.some((t) => t.id === tr.id)) {
-            targetTransitions.push(tr);
+          if (isTransitionOnlyCopy) {
+            if (transitionIds.includes(tr.id) && !targetTransitions.some((t) => t.id === tr.id)) {
+              targetTransitions.push(tr);
+            }
+          } else {
+            if (!targetTransitions.some((t) => t.id === tr.id)) {
+              targetTransitions.push(tr);
+            }
           }
         }
       }
@@ -782,3 +805,59 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       connections: [...state.connections, conn],
     })),
 }));
+
+export function createInitialTestStore() {
+  const initialWf = JSON.parse(JSON.stringify(vendorInvoiceWorkflow)) as WorkflowDefinition;
+  const initialSamples = JSON.parse(JSON.stringify(sampleWorkflows)) as WorkflowDefinition[];
+  return {
+    workflows: initialSamples,
+    activeWorkflowId: initialWf.id,
+    activeTab: "designer" as NavigationTab,
+
+    selectedStateId: "validate-invoice",
+    selectedTransitionId: null,
+    selectedStateIds: ["validate-invoice"],
+    selectedTransitionIds: [],
+
+    copiedSelection: null,
+
+    isAdvancedMode: false,
+    validationIssues: validateWorkflow(initialWf),
+
+    activeRuns: [],
+    activeRunId: null,
+    simulationActive: false,
+
+    connections: [
+      {
+        id: "conn-gemini",
+        name: "Google DeepMind Gemini API",
+        type: "agent_provider" as const,
+        service: "Gemini 3.6 Flash",
+        status: "connected" as const,
+        lastTestedAt: new Date().toISOString(),
+      },
+      {
+        id: "conn-vendor-api",
+        name: "ERP Vendor Registry API",
+        type: "api_key" as const,
+        service: "REST Endpoint",
+        status: "connected" as const,
+        lastTestedAt: new Date().toISOString(),
+      },
+      {
+        id: "conn-slack",
+        name: "Finance Slack Webhook",
+        type: "webhook" as const,
+        service: "Slack Channels",
+        status: "connected" as const,
+        lastTestedAt: new Date().toISOString(),
+      },
+    ],
+  };
+}
+
+export function resetWorkflowStore() {
+  resetDesignerIdFactory();
+  useWorkflowStore.setState(createInitialTestStore());
+}

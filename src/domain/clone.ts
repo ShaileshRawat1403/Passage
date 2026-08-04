@@ -1,4 +1,5 @@
 import { WorkflowState, TransitionDefinition, ActionDefinition } from "../types/workflow";
+import { generateDesignerId } from "./idFactory";
 
 export interface CloneSubgraphOptions {
   offset?: { x: number; y: number };
@@ -21,9 +22,7 @@ export function cloneWorkflowSubgraph(
   options: CloneSubgraphOptions = {}
 ): { states: WorkflowState[]; transitions: TransitionDefinition[] } {
   const offset = options.offset ?? { x: 40, y: 40 };
-  const genId =
-    options.idGenerator ??
-    ((prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`);
+  const genId = options.idGenerator ?? generateDesignerId;
 
   const stateIdMap = new Map<string, string>();
   const actionIdMap = new Map<string, string>();
