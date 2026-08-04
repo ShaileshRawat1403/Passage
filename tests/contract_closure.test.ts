@@ -339,6 +339,92 @@ describe("P0.1B Transaction and Evidence Closure - Failure Audit Semantics & Tra
     const stateExitedEvent = result.updatedRun.auditTrail.find((a) => a.eventType === "state_exited");
     expect(stateExitedEvent).toBeUndefined();
   });
+
+  const failingTransitionWf: WorkflowDefinition = {
+    id: "wf-fail-trans",
+    name: "Failing Transition Action Workflow",
+    version: "1.0.0",
+    status: "published",
+    initialStateId: "start",
+    createdAt: "2026-08-04T12:00:00.000Z",
+    updatedAt: "2026-08-04T12:00:00.000Z",
+    states: [
+      {
+        id: "start",
+        name: "Start State",
+        type: "start",
+        entryActions: [],
+        activeActions: [],
+        exitActions: [],
+        transitions: [
+          {
+            id: "tr-1",
+            sourceStateId: "start",
+            targetStateId: "finish",
+            event: "NEXT",
+            actions: [
+              {
+                id: "act-trans-fail",
+                name: "Failing Transition Action",
+                type: "http",
+                httpConfig: {
+                  method: "POST",
+                  url: "https://example.com/fail-trans",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "finish",
+        name: "Finish State",
+        type: "final",
+        entryActions: [],
+        activeActions: [],
+        exitActions: [],
+        transitions: [],
+      },
+    ],
+  };
+
+  it("should NOT record state_exited or transition_taken when transition action fails", () => {
+    const env = createTestEnvironment(undefined, {
+      executeAction: (action, _context, env) => {
+        if (action.id === "act-trans-fail") {
+          return {
+            actionId: action.id,
+            actionName: action.name,
+            status: "failure",
+            error: "Transition action failed explicitly",
+            output: {},
+            executedAt: env.now(),
+          };
+        }
+        return {
+          actionId: action.id,
+          actionName: action.name,
+          status: "success",
+          output: {},
+          executedAt: env.now(),
+        };
+      },
+    });
+
+    const run = createWorkflowRun(failingTransitionWf, {}, "CASE-TRANS-FAIL", env);
+
+    const result = dispatchWorkflowEvent(failingTransitionWf, run, "NEXT", "Operator", env);
+
+    expect(result.updatedRun.status).toBe("failed");
+    expect(result.updatedRun.currentStateId).toBe("start");
+    expect(result.transitionTaken).toBeUndefined();
+
+    const stateExitedEvent = result.updatedRun.auditTrail.find((a) => a.eventType === "state_exited");
+    expect(stateExitedEvent).toBeUndefined();
+
+    const transitionTakenEvent = result.updatedRun.auditTrail.find((a) => a.eventType === "transition_taken");
+    expect(transitionTakenEvent).toBeUndefined();
+  });
 });
 
 describe("P0.1B Transaction and Evidence Closure - Parallel Policy Mode 'all'", () => {
@@ -360,6 +446,22 @@ describe("P0.1B Transaction and Evidence Closure - Parallel Policy Mode 'all'", 
           entryActions: [],
           activeActions: [],
           exitActions: [],
+          transitions: [
+            {
+              id: "tr-1",
+              sourceStateId: "start",
+              targetStateId: "finish",
+              event: "NEXT",
+            },
+          ],
+        },
+        {
+          id: "finish",
+          name: "Finish State",
+          type: "final",
+          entryActions: [],
+          activeActions: [],
+          exitActions: [],
           transitions: [],
         },
       ],
@@ -367,7 +469,7 @@ describe("P0.1B Transaction and Evidence Closure - Parallel Policy Mode 'all'", 
 
     const parsed = parseWorkflowDefinition(invalidParallelWf);
     expect(parsed.success).toBe(false);
-    expect(parsed.errors.length).toBeGreaterThan(0);
+    expect(parsed.errors.some((error) => error.includes("parallelPolicy.mode"))).toBe(true);
   });
 });
 
