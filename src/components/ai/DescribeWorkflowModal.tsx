@@ -17,7 +17,10 @@ export const DescribeWorkflowModal: React.FC<DescribeWorkflowModalProps> = ({ is
     "When an invoice arrives, validate the invoice schema and vendor registration. If amount is below ₹50,000, run an automated risk check and proceed to payment. If amount is above ₹50,000, request finance manager approval. If rejected, mark as rejected. If changes requested, send back for correction."
   );
   const [loading, setLoading] = useState(false);
-  const [generatedResult, setGeneratedResult] = useState<any>(null);
+  const [generatedResult, setGeneratedResult] = useState<{
+    workflow?: WorkflowDefinition;
+    questions?: string[];
+  } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
   const handleGenerate = async () => {
@@ -37,8 +40,9 @@ export const DescribeWorkflowModal: React.FC<DescribeWorkflowModalProps> = ({ is
         throw new Error(data.error);
       }
       setGeneratedResult(data);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to generate workflow. Using fallback structure.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to generate workflow.";
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -48,42 +52,15 @@ export const DescribeWorkflowModal: React.FC<DescribeWorkflowModalProps> = ({ is
     if (!generatedResult) return;
 
     try {
-      // Build valid WorkflowDefinition from AI generated json
-      const states = (generatedResult.states || []).map((s: any, idx: number) => ({
-        id: s.id || `state-${idx + 1}`,
-        name: s.name || `Step ${idx + 1}`,
-        description: s.description || "",
-        type: s.type || "atomic",
-        position: { x: 100 + (idx % 4) * 280, y: 150 + Math.floor(idx / 4) * 200 },
-        entryActions: s.entryActions || [],
-        activeActions: s.activeActions || [],
-        exitActions: s.exitActions || [],
-        transitions: (s.transitions || []).map((t: any, tidx: number) => ({
-          id: t.id || `tr-${idx}-${tidx}`,
-          sourceStateId: s.id,
-          targetStateId: t.targetStateId,
-          event: t.event || "NEXT",
-          priority: 10,
-          guard: t.guard,
-        })),
-      }));
-
-      const fullWf: WorkflowDefinition = {
-        id: `ai-wf-${Date.now()}`,
-        name: generatedResult.name || "AI Generated Workflow",
-        description: generatedResult.description || prompt,
-        version: "1.0.0",
-        status: "draft",
-        initialStateId: states[0]?.id || "start-1",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        states,
-      };
-
-      importWorkflowJson(JSON.stringify(fullWf));
-      onClose();
-    } catch (e: any) {
-      setErrorMsg("Failed to import generated workflow into Stateflow.");
+      const wf = generatedResult.workflow || (generatedResult as unknown as WorkflowDefinition);
+      if (wf && wf.states && wf.states.length > 0) {
+        importWorkflowJson(JSON.stringify(wf));
+        onClose();
+      } else {
+        setErrorMsg("Generated result does not contain a valid workflow definition.");
+      }
+    } catch (_e: unknown) {
+      setErrorMsg("Failed to import generated workflow into Passage.");
     }
   };
 
@@ -157,15 +134,15 @@ export const DescribeWorkflowModal: React.FC<DescribeWorkflowModalProps> = ({ is
             <div className="p-4 rounded-xl bg-[#131a28] border border-[#253047] space-y-3 animate-fadeIn">
               <div className="flex items-center justify-between border-b border-[#253047] pb-2">
                 <span className="font-bold text-[#45e0d1] text-sm">
-                  {generatedResult.name || "Generated Workflow"}
+                  {generatedResult.workflow?.name || (generatedResult as unknown as WorkflowDefinition)?.name || "Generated Workflow"}
                 </span>
                 <span className="font-mono text-[10px] text-[#8c98ae]">
-                  {generatedResult.states?.length || 0} States Synthesized
+                  {(generatedResult.workflow?.states || (generatedResult as unknown as WorkflowDefinition)?.states || []).length} States Synthesized
                 </span>
               </div>
 
               <p className="text-[#8c98ae] leading-relaxed">
-                {generatedResult.description}
+                {generatedResult.workflow?.description || (generatedResult as unknown as WorkflowDefinition)?.description}
               </p>
 
               {/* Clarifying Questions */}

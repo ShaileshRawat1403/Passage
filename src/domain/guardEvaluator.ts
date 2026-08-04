@@ -16,11 +16,11 @@ export function extractContextValue(context: Record<string, unknown>, pathStr: s
   if (!cleanPath) return context;
 
   const parts = cleanPath.split(".");
-  let current: any = context;
+  let current: unknown = context;
 
   for (const part of parts) {
-    if (current === undefined || current === null) return undefined;
-    current = current[part];
+    if (typeof current !== "object" || current === null) return undefined;
+    current = (current as Record<string, unknown>)[part];
   }
 
   return current;

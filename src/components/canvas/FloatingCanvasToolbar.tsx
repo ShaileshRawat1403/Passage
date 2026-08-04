@@ -100,8 +100,9 @@ export const FloatingCanvasToolbar: React.FC = () => {
       setIsImportOpen(false);
       setImportJsonText("");
       showToast("Workflow JSON imported successfully!");
-    } catch (err: any) {
-      setImportError(err.message || "Invalid JSON syntax or workflow structure.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Invalid JSON syntax or workflow structure.";
+      setImportError(message);
     }
   };
 

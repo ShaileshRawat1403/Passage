@@ -33,7 +33,7 @@ export const SimulationBar: React.FC = () => {
   }
 
   const handleEmit = (eventName: string) => {
-    const inv = (activeRun.context.invoice as Record<string, any>) || {};
+    const inv = (activeRun.context.invoice as Record<string, unknown>) || {};
     dispatchEventToRun(activeRun.id, eventName, {
       invoice: {
         ...inv,

@@ -92,7 +92,7 @@ Output a JSON object matching this TypeScript structure:
             "description": string,
             "logic": "ALL" | "ANY",
             "conditions": [
-              { "id": string, "field": string, "operator": "equals" | "greater_than" | "less_than" | "is_true", "value": any }
+              { "id": string, "field": string, "operator": "equals" | "greater_than" | "less_than" | "is_true", "value": string | number | boolean }
             ]
           }
         }
@@ -130,12 +130,13 @@ Respond strictly with valid JSON. Do NOT include markdown code blocks.`;
       }
 
       res.json({
-        ...parseResult.workflow,
+        workflow: parseResult.workflow,
         questions,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Workflow Generation Error:", err);
-      res.status(500).json({ error: err.message || "Failed to generate workflow" });
+      const message = err instanceof Error ? err.message : "Failed to generate workflow";
+      res.status(500).json({ error: message });
     }
   });
 
@@ -172,7 +173,7 @@ Return a valid JSON object with risk analysis and recommendation.`,
 
       const output = JSON.parse(response.text || "{}");
       res.json({ status: "success", output });
-    } catch (err: any) {
+    } catch (_err: unknown) {
       res.json({
         status: "success",
         output: {

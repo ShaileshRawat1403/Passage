@@ -92,7 +92,7 @@ export const RunTimeline: React.FC = () => {
           </div>
 
           <p className="text-slate-300 leading-relaxed text-xs">
-            Invoice amount (₹{((run.context.invoice as Record<string, any>)?.amount)?.toLocaleString()}) exceeds standard threshold. Select an action decision:
+            Invoice amount (₹{((run.context.invoice as Record<string, unknown>)?.amount as number)?.toLocaleString()}) exceeds standard threshold. Select an action decision:
           </p>
 
           <div className="flex flex-wrap items-center gap-2.5 pt-2">

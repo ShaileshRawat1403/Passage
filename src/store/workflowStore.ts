@@ -84,8 +84,8 @@ interface WorkflowStateStore {
   runValidation: (workflowId?: string) => ValidationIssue[];
 
   // Simulation & Runtime execution
-  startNewRun: (workflowId: string, customContext?: Record<string, any>) => WorkflowRun;
-  dispatchEventToRun: (runId: string, eventName: string, payload?: Record<string, any>) => void;
+  startNewRun: (workflowId: string, customContext?: Record<string, unknown>) => WorkflowRun;
+  dispatchEventToRun: (runId: string, eventName: string, payload?: Record<string, unknown>) => void;
   setActiveRunId: (runId: string | null) => void;
 
   // Connections

@@ -35,7 +35,8 @@ export const defaultProductionEnv: RuntimeEnvironment = {
  * Creates a deterministic runtime environment for reproducible test execution and simulation
  */
 export function createTestEnvironment(
-  fixedTime: string = "2026-08-04T12:00:00.000Z"
+  fixedTime: string = "2026-08-04T12:00:00.000Z",
+  overrides?: Partial<RuntimeEnvironment>
 ): RuntimeEnvironment {
   let counter = 0;
   return {
@@ -48,5 +49,6 @@ export function createTestEnvironment(
       const date = new Date(timestamp);
       return new Date(date.getTime() + durationMs).toISOString();
     },
+    ...overrides,
   };
 }

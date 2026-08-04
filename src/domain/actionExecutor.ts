@@ -145,7 +145,7 @@ export function applyActionOutputToContext(
     return currentContext;
   }
 
-  const newContext: Record<string, any> = JSON.parse(JSON.stringify(currentContext));
+  const newContext: Record<string, unknown> = JSON.parse(JSON.stringify(currentContext));
 
   for (const [outputKey, targetPath] of Object.entries(action.outputMapping)) {
     const val = actionResult.output[outputKey] ?? actionResult.output;
@@ -161,7 +161,7 @@ export function applyActionOutputToContext(
       if (!curr[part] || typeof curr[part] !== "object") {
         curr[part] = {};
       }
-      curr = curr[part];
+      curr = curr[part] as Record<string, unknown>;
     }
     const lastPart = parts[parts.length - 1];
     if (lastPart) {

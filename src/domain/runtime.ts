@@ -425,7 +425,6 @@ export function dispatchWorkflowEvent(
           failedActionCount: failedActions,
           auditTrail,
         },
-        transitionTaken: selectedTransition,
         plan,
       };
     } else {
@@ -444,19 +443,7 @@ export function dispatchWorkflowEvent(
     }
   }
 
-  // 3. Audit State Exit
-  auditTrail.push({
-    id: env.createId("AUDIT"),
-    workflowRunId: run.id,
-    workflowVersion: workflow.version,
-    timestamp: now,
-    eventType: "state_exited",
-    stateId: sourceState.id,
-    actor,
-    metadata: { nextStateId: targetState.id },
-  });
-
-  // 4. Execute Transition Actions
+  // 3. Execute Transition Actions
   for (const action of plan.plannedTransitionActions || []) {
     auditTrail.push({
       id: env.createId("AUDIT"),
@@ -502,7 +489,6 @@ export function dispatchWorkflowEvent(
           failedActionCount: failedActions,
           auditTrail,
         },
-        transitionTaken: selectedTransition,
         plan,
       };
     } else {
@@ -520,6 +506,18 @@ export function dispatchWorkflowEvent(
       });
     }
   }
+
+  // 4. Audit State Exit (Only after all exit and transition actions succeed)
+  auditTrail.push({
+    id: env.createId("AUDIT"),
+    workflowRunId: run.id,
+    workflowVersion: workflow.version,
+    timestamp: now,
+    eventType: "state_exited",
+    stateId: sourceState.id,
+    actor,
+    metadata: { nextStateId: targetState.id },
+  });
 
   // 5. Audit Transition Taken
   auditTrail.push({

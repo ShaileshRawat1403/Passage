@@ -29,7 +29,7 @@ export function parseWorkflowDefinition(input: unknown): ParseWorkflowResult {
   }
 
   // 1. Structural Normalization
-  const raw = JSON.parse(JSON.stringify(input)) as Record<string, any>;
+  const raw = JSON.parse(JSON.stringify(input)) as Record<string, unknown>;
 
   if (!raw.id) raw.id = `wf-${Date.now()}`;
   if (!raw.name) raw.name = "Untitled Workflow";
@@ -40,8 +40,9 @@ export function parseWorkflowDefinition(input: unknown): ParseWorkflowResult {
 
   // Normalize legacy 'initialState' -> 'initialStateId'
   if (raw.initialState) {
+    const initialStateObj = raw.initialState as string | { id?: string };
     const normalizedInitialState =
-      typeof raw.initialState === "string" ? raw.initialState : raw.initialState.id;
+      typeof initialStateObj === "string" ? initialStateObj : initialStateObj.id;
     if (!raw.initialStateId) {
       raw.initialStateId = normalizedInitialState;
     }
@@ -54,23 +55,26 @@ export function parseWorkflowDefinition(input: unknown): ParseWorkflowResult {
   }
 
   if (Array.isArray(raw.states)) {
-    for (const state of raw.states) {
+    const statesList = raw.states as Array<Record<string, unknown>>;
+    for (const state of statesList) {
       if (!state.entryActions) state.entryActions = [];
       if (!state.activeActions) state.activeActions = [];
       if (!state.exitActions) state.exitActions = [];
       if (!state.transitions) state.transitions = [];
 
       // Infer sourceStateId on transitions if omitted
-      for (const tr of state.transitions) {
-        if (!tr.sourceStateId && state.id) {
-          tr.sourceStateId = state.id;
+      if (Array.isArray(state.transitions)) {
+        for (const tr of state.transitions as Array<Record<string, unknown>>) {
+          if (!tr.sourceStateId && state.id) {
+            tr.sourceStateId = state.id;
+          }
         }
       }
     }
 
     if (!raw.initialStateId) {
-      const startSt = raw.states.find((s: any) => s.type === "start");
-      if (startSt) raw.initialStateId = startSt.id;
+      const startSt = statesList.find((s) => s.type === "start");
+      if (startSt && startSt.id) raw.initialStateId = startSt.id;
     }
   }
 

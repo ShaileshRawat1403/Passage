@@ -215,7 +215,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
                   <label className="block text-[10px] text-[#8c98ae] font-mono mb-0.5">Method</label>
                   <select
                     value={httpMethod}
-                    onChange={(e) => setHttpMethod(e.target.value as any)}
+                    onChange={(e) => setHttpMethod(e.target.value as "GET" | "POST" | "PUT" | "DELETE")}
                     className="w-full px-2 py-1.5 rounded bg-[#0f1420] border border-[#253047] text-[#eef3ff] outline-none"
                   >
                     <option value="POST">POST</option>

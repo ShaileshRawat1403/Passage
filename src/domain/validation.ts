@@ -1,4 +1,4 @@
-import { WorkflowDefinition, ValidationIssue } from "../types/workflow";
+import { WorkflowDefinition, ValidationIssue, ActionDefinition } from "../types/workflow";
 import { WorkflowDefinitionSchema } from "./schemas";
 
 /**
@@ -95,7 +95,7 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
   }
 
   // Collect and validate all actions
-  const validateAction = (act: any, stateId: string, context: string) => {
+  const validateAction = (act: ActionDefinition, stateId: string, context: string) => {
     if (!act.id) {
       issues.push({
         id: `err-action-no-id-${stateId}-${context}`,

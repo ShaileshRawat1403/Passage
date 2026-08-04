@@ -208,3 +208,186 @@ describe("P0.1 Contract Closure - Deterministic Runtime Environment", () => {
     expect(dispatch1.updatedRun.auditTrail[0]?.id).toContain("AUDIT-TEST-");
   });
 });
+
+describe("P0.1B Transaction and Evidence Closure - Terminal Statuses", () => {
+  const baseWf: WorkflowDefinition = {
+    id: "wf-term-1",
+    name: "Terminal Status Test Workflow",
+    version: "1.0.0",
+    status: "published",
+    initialStateId: "start",
+    createdAt: "2026-08-04T12:00:00.000Z",
+    updatedAt: "2026-08-04T12:00:00.000Z",
+    states: [
+      {
+        id: "start",
+        name: "Start State",
+        type: "start",
+        entryActions: [],
+        activeActions: [],
+        exitActions: [],
+        transitions: [
+          {
+            id: "tr-1",
+            sourceStateId: "start",
+            targetStateId: "finish",
+            event: "NEXT",
+          },
+        ],
+      },
+      {
+        id: "finish",
+        name: "Finish State",
+        type: "final",
+        entryActions: [],
+        activeActions: [],
+        exitActions: [],
+        transitions: [],
+      },
+    ],
+  };
+
+  it("should REJECT transitions for cancelled runs as terminal", () => {
+    const env = createTestEnvironment();
+    const run = createWorkflowRun(baseWf, {}, "CASE-CANCEL", env);
+    const cancelledRun = { ...run, status: "cancelled" as const };
+
+    const result = dispatchWorkflowEvent(baseWf, cancelledRun, "NEXT", "Operator", env);
+    expect(result.plan.status).toBe("terminal_state");
+    expect(result.error).toContain("cancelled");
+  });
+});
+
+describe("P0.1B Transaction and Evidence Closure - Failure Audit Semantics & Transactional Ordering", () => {
+  const failingExitWf: WorkflowDefinition = {
+    id: "wf-fail-exit",
+    name: "Failing Exit Action Workflow",
+    version: "1.0.0",
+    status: "published",
+    initialStateId: "start",
+    createdAt: "2026-08-04T12:00:00.000Z",
+    updatedAt: "2026-08-04T12:00:00.000Z",
+    states: [
+      {
+        id: "start",
+        name: "Start State",
+        type: "start",
+        entryActions: [],
+        activeActions: [],
+        exitActions: [
+          {
+            id: "act-exit-fail",
+            name: "Failing Exit Action",
+            type: "http",
+            httpConfig: {
+              method: "POST",
+              url: "https://example.com/fail",
+            },
+          },
+        ],
+        transitions: [
+          {
+            id: "tr-1",
+            sourceStateId: "start",
+            targetStateId: "finish",
+            event: "NEXT",
+          },
+        ],
+      },
+      {
+        id: "finish",
+        name: "Finish State",
+        type: "final",
+        entryActions: [],
+        activeActions: [],
+        exitActions: [],
+        transitions: [],
+      },
+    ],
+  };
+
+  it("should NOT record state_exited or return transitionTaken when exit action fails", () => {
+    const env = createTestEnvironment(undefined, {
+      executeAction: (action, _context, env) => {
+        if (action.id === "act-exit-fail") {
+          return {
+            actionId: action.id,
+            actionName: action.name,
+            status: "failure",
+            error: "Exit action failed explicitly",
+            output: {},
+            executedAt: env.now(),
+          };
+        }
+        return {
+          actionId: action.id,
+          actionName: action.name,
+          status: "success",
+          output: {},
+          executedAt: env.now(),
+        };
+      },
+    });
+
+    const run = createWorkflowRun(failingExitWf, {}, "CASE-EXIT-FAIL", env);
+
+    const result = dispatchWorkflowEvent(failingExitWf, run, "NEXT", "Operator", env);
+
+    expect(result.updatedRun.status).toBe("failed");
+    expect(result.transitionTaken).toBeUndefined();
+
+    const stateExitedEvent = result.updatedRun.auditTrail.find((a) => a.eventType === "state_exited");
+    expect(stateExitedEvent).toBeUndefined();
+  });
+});
+
+describe("P0.1B Transaction and Evidence Closure - Parallel Policy Mode 'all'", () => {
+  it("should REJECT parallel policy mode other than 'all'", () => {
+    const invalidParallelWf = {
+      id: "wf-par-invalid",
+      name: "Invalid Parallel Policy Workflow",
+      version: "1.0.0",
+      status: "published",
+      initialStateId: "start",
+      createdAt: "2026-08-04T12:00:00.000Z",
+      updatedAt: "2026-08-04T12:00:00.000Z",
+      states: [
+        {
+          id: "start",
+          name: "Start Parallel State",
+          type: "start",
+          parallelPolicy: { mode: "any" }, // Invalid policy mode
+          entryActions: [],
+          activeActions: [],
+          exitActions: [],
+          transitions: [],
+        },
+      ],
+    };
+
+    const parsed = parseWorkflowDefinition(invalidParallelWf);
+    expect(parsed.success).toBe(false);
+    expect(parsed.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe("P0.1B Transaction and Evidence Closure - Bundled Workflows Verification", () => {
+  it("should validate EVERY bundled sample workflow definition cleanly", async () => {
+    const { sampleWorkflows } = await import("../src/domain/sampleWorkflows");
+    const { validateWorkflow } = await import("../src/domain/validation");
+
+    expect(sampleWorkflows.length).toBeGreaterThan(0);
+
+    for (const wf of sampleWorkflows) {
+      const parseRes = parseWorkflowDefinition(wf);
+      expect(parseRes.success).toBe(true);
+      expect(parseRes.workflow).toBeDefined();
+
+      if (parseRes.workflow) {
+        const issues = validateWorkflow(parseRes.workflow);
+        const errors = issues.filter((i) => i.severity === "error");
+        expect(errors).toHaveLength(0);
+      }
+    }
+  });
+});

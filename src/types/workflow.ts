@@ -89,7 +89,7 @@ export interface AuditPolicy {
 }
 
 export interface ParallelPolicy {
-  mode: "all" | "any" | "first_success" | "required_subset" | "race" | "best_effort";
+  mode: "all";
   requiredActionIds?: string[];
   cancelRemaining?: boolean;
 }

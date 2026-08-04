@@ -52,7 +52,8 @@ export function planTransition(params: {
   const eventName = typeof event === "string" ? event : event.type;
 
   // 1. Check run lifecycle status
-  if (run.status === "completed" || run.status === "failed") {
+  const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
+  if (terminalStatuses.has(run.status)) {
     return {
       status: "terminal_state",
       eventName,

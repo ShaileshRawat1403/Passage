@@ -95,7 +95,7 @@ export const AuditPolicySchema = z.strictObject({
 });
 
 export const ParallelPolicySchema = z.strictObject({
-  mode: z.enum(["all", "any", "first_success", "required_subset", "race", "best_effort"]),
+  mode: z.enum(["all"]),
   requiredActionIds: z.array(z.string()).optional(),
   cancelRemaining: z.boolean().optional(),
 });
