@@ -1,0 +1,113 @@
+import React from "react";
+import { Header } from "./Header";
+import { Sidebar } from "./Sidebar";
+import { WorkflowCanvas } from "../canvas/WorkflowCanvas";
+import { StateInspector } from "../inspector/StateInspector";
+import { SimulationBar } from "../runtime/SimulationBar";
+import { RunTimeline } from "../runtime/RunTimeline";
+import { DashboardView } from "../views/DashboardView";
+import { WorkflowListView } from "../views/WorkflowListView";
+import { ConnectionsView } from "../views/ConnectionsView";
+import { ComponentsView } from "../views/ComponentsView";
+import { SettingsView } from "../views/SettingsView";
+import { useWorkflowStore } from "../../store/workflowStore";
+
+export const MainLayout: React.FC = () => {
+  const { activeTab } = useWorkflowStore();
+
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#020617] text-[#eef3ff] relative select-none font-sans">
+      {/* Immersive Background Ambient Lighting & Cyber Grid */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute -top-[10%] -left-[5%] w-[50%] h-[50%] bg-blue-900/15 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[10%] -right-[5%] w-[45%] h-[45%] bg-indigo-900/15 rounded-full blur-[120px]" />
+        <div className="absolute inset-0 bg-grid-pattern opacity-60" />
+      </div>
+
+      {/* Header */}
+      <Header />
+
+      {/* Main Workspace Area */}
+      <div className="flex-1 flex overflow-hidden relative z-10">
+        {activeTab === "designer" && (
+          <>
+            <Sidebar />
+            <div className="flex-1 flex flex-col h-full relative">
+              <SimulationBar />
+              <div className="flex-1 relative">
+                <WorkflowCanvas />
+              </div>
+            </div>
+            <StateInspector />
+          </>
+        )}
+
+        {activeTab === "runs" && (
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <SimulationBar />
+            <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+              <RunTimeline />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "workflows" && (
+          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <WorkflowListView />
+          </div>
+        )}
+
+        {activeTab === "connections" && (
+          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <ConnectionsView />
+          </div>
+        )}
+
+        {activeTab === "components" && (
+          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <ComponentsView />
+          </div>
+        )}
+
+        {activeTab === "settings" && (
+          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <SettingsView />
+          </div>
+        )}
+      </div>
+
+      {/* Immersive Telemetry Footer Status Bar */}
+      <footer className="h-8 border-t border-white/10 bg-black/60 backdrop-blur-xl px-5 flex items-center justify-between z-30 text-[10px] font-mono text-slate-400 uppercase tracking-widest shrink-0">
+        <div className="flex items-center gap-4">
+          <span className="text-cyan-400 font-bold">PASSAGE // ARCHON v2.4</span>
+          <span className="text-slate-600">|</span>
+          <div className="flex items-center gap-1.5 text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+            SYSTEM NOMINAL
+          </div>
+        </div>
+
+        {/* Audio / Pulse Visualizer Bars */}
+        <div className="flex gap-1 h-3 items-end opacity-70">
+          <div className="w-0.5 h-[30%] bg-cyan-400" />
+          <div className="w-0.5 h-[60%] bg-cyan-400" />
+          <div className="w-0.5 h-[90%] bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
+          <div className="w-0.5 h-[40%] bg-cyan-400" />
+          <div className="w-0.5 h-[75%] bg-cyan-400" />
+          <div className="w-0.5 h-[20%] bg-cyan-400" />
+          <div className="w-0.5 h-[100%] bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
+          <div className="w-0.5 h-[50%] bg-cyan-400" />
+        </div>
+
+        <div className="flex items-center gap-5">
+          <span className="text-slate-500">
+            NET_LATENCY: <span className="text-cyan-400">12ms</span>
+          </span>
+          <span className="text-slate-500">
+            GRID_LOCK: <span className="text-emerald-400">ACTIVE</span>
+          </span>
+        </div>
+      </footer>
+    </div>
+  );
+};
