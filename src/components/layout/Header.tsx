@@ -19,7 +19,7 @@ import { useWorkflowStore, NavigationTab } from "../../store/workflowStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { DescribeWorkflowModal } from "../ai/DescribeWorkflowModal";
 import { ThemeSelector } from "../theme/ThemeSelector";
-import { getWorkflowReadiness } from "../../domain/validation";
+import { getWorkflowReadiness } from "../../domain/readiness";
 
 export const Header: React.FC = () => {
   const {

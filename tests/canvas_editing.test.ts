@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useWorkflowStore } from "../src/store/workflowStore";
 import { WorkflowDefinition, WorkflowState, ActionDefinition } from "../src/types/workflow";
-import { getWorkflowReadiness } from "../src/domain/validation";
+import { getWorkflowReadiness } from "../src/domain/readiness";
 
 describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => {
   let testWorkflowId: string;
@@ -120,9 +120,10 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
     const storeAfter = useWorkflowStore.getState();
     const wfAfter = storeAfter.workflows.find((w) => w.id === testWorkflowId)!;
 
-    // Check newly pasted states
-    const pastedStart = wfAfter.states.find((s) => s.id.includes("start-1-paste"));
-    const pastedStep = wfAfter.states.find((s) => s.id.includes("step-1-paste"));
+    // Newly pasted states are those not in the original 3 states
+    const pastedStates = wfAfter.states.filter((s) => !["start-1", "step-1", "end-1"].includes(s.id));
+    const pastedStart = pastedStates.find((s) => s.name.includes("Start State"));
+    const pastedStep = pastedStates.find((s) => s.name.includes("Process Step"));
 
     expect(pastedStart).toBeDefined();
     expect(pastedStep).toBeDefined();
@@ -159,24 +160,66 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
     expect(useWorkflowStore.getState().selectedStateId).toBeNull();
   });
 
-  it("8. Every edit triggers automatic validation", () => {
+  it("8. Reject creating transitions with non-existent source or target endpoints", () => {
     const store = useWorkflowStore.getState();
+    const wfBefore = store.workflows.find((w) => w.id === testWorkflowId)!;
+    const initialTransitionsCount = wfBefore.states.reduce((acc, s) => acc + (s.transitions?.length || 0), 0);
 
-    // Create an invalid transition pointing to a non-existent state
+    // Try adding a transition with missing target
     store.addTransition(testWorkflowId, {
-      id: "tr-invalid",
+      id: "tr-invalid-target",
       sourceStateId: "start-1",
       targetStateId: "non-existent-state-999",
       event: "BAD_ROUTE",
     });
 
-    const issues = useWorkflowStore.getState().validationIssues;
-    const missingTargetIssue = issues.find((i) => i.id.includes("err-transition-missing-target"));
-    expect(missingTargetIssue).toBeDefined();
-    expect(missingTargetIssue?.severity).toBe("error");
+    const wfAfter = useWorkflowStore.getState().workflows.find((w) => w.id === testWorkflowId)!;
+    const transitionsCountAfter = wfAfter.states.reduce((acc, s) => acc + (s.transitions?.length || 0), 0);
+
+    // Transition should be rejected and not present anywhere in the workflow
+    expect(transitionsCountAfter).toBe(initialTransitionsCount);
+    const startState = wfAfter.states.find((s) => s.id === "start-1")!;
+    expect(startState.transitions.find((t) => t.id === "tr-invalid-target")).toBeUndefined();
   });
 
-  it("9. Canvas edits do not modify an active WorkflowRun", () => {
+  it("9. Reject migrating transition source to a non-existent state", () => {
+    const store = useWorkflowStore.getState();
+    const wfBefore = store.workflows.find((w) => w.id === testWorkflowId)!;
+    const startState = wfBefore.states.find((s) => s.id === "start-1")!;
+    const originalTr = startState.transitions[0];
+    expect(originalTr).toBeDefined();
+    if (!originalTr) return;
+
+    // Attempt to migrate source to non-existent state ID
+    store.updateTransition(testWorkflowId, originalTr.id, {
+      sourceStateId: "ghost-state-404",
+    });
+
+    const wfAfter = useWorkflowStore.getState().workflows.find((w) => w.id === testWorkflowId)!;
+    const updatedStart = wfAfter.states.find((s) => s.id === "start-1")!;
+    const trStillThere = updatedStart.transitions.find((t) => t.id === originalTr.id);
+
+    // Transition source should remain unchanged
+    expect(trStillThere).toBeDefined();
+    expect(trStillThere?.sourceStateId).toBe("start-1");
+  });
+
+  it("10. Initial state deletion policy reassigns initialStateId cleanly", () => {
+    const store = useWorkflowStore.getState();
+    const wfBefore = store.workflows.find((w) => w.id === testWorkflowId)!;
+    const initialId = wfBefore.initialStateId;
+
+    // Delete the initial state ("start-1")
+    store.deleteState(testWorkflowId, initialId);
+
+    const wfAfter = useWorkflowStore.getState().workflows.find((w) => w.id === testWorkflowId)!;
+
+    // Initial state ID should be reassigned to remaining start state or first state
+    expect(wfAfter.initialStateId).not.toBe(initialId);
+    expect(wfAfter.states.some((s) => s.id === wfAfter.initialStateId)).toBe(true);
+  });
+
+  it("11. Canvas edits do not modify an active WorkflowRun", () => {
     const store = useWorkflowStore.getState();
     const activeRun = store.startNewRun(testWorkflowId);
 
@@ -202,7 +245,7 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
     expect(runAfter.history.length).toBe(runHistoryLengthBefore);
   });
 
-  it("10. Readiness is derived separately from lifecycle status", () => {
+  it("12. Readiness is derived separately from lifecycle status", () => {
     const store = useWorkflowStore.getState();
     const wf = store.workflows.find((w) => w.id === testWorkflowId)!;
 
@@ -220,5 +263,21 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
     const brokenWf = useWorkflowStore.getState().workflows.find((w) => w.id === testWorkflowId)!;
     expect(brokenWf.status).toBe("draft");
     expect(getWorkflowReadiness(brokenWf)).toBe("incomplete");
+  });
+
+  it("13. Domain multi-selection and selection reconciliation", () => {
+    const store = useWorkflowStore.getState();
+
+    store.setSelectedSelection(["start-1", "step-1"], ["tr-init"]);
+    expect(useWorkflowStore.getState().selectedStateIds).toEqual(["start-1", "step-1"]);
+    expect(useWorkflowStore.getState().selectedTransitionIds).toEqual(["tr-init"]);
+
+    // Delete one of the selected states
+    store.deleteState(testWorkflowId, "step-1");
+
+    // Reconciled selection should automatically remove step-1
+    const stateAfter = useWorkflowStore.getState();
+    expect(stateAfter.selectedStateIds).not.toContain("step-1");
+    expect(stateAfter.selectedStateIds).toContain("start-1");
   });
 });

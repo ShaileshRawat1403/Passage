@@ -48,8 +48,11 @@ const WorkflowCanvasInner: React.FC = () => {
     activeWorkflowId,
     selectedStateId,
     selectedTransitionId,
+    selectedStateIds,
+    selectedTransitionIds,
     setSelectedStateId,
     setSelectedTransitionId,
+    setSelectedSelection,
     updateStatePosition,
     addTransition,
     deleteSelection,
@@ -65,18 +68,20 @@ const WorkflowCanvasInner: React.FC = () => {
   // Convert workflow states into React Flow nodes
   const initialNodes: Node[] = useMemo(() => {
     if (!activeWorkflow) return [];
+    const selSet = new Set(selectedStateIds.length > 0 ? selectedStateIds : (selectedStateId ? [selectedStateId] : []));
     return activeWorkflow.states.map((st) => ({
       id: st.id,
       type: st.type,
       position: st.position || { x: 100, y: 100 },
       data: st as unknown as Record<string, unknown>,
-      selected: st.id === selectedStateId,
+      selected: selSet.has(st.id),
     }));
-  }, [activeWorkflow, selectedStateId]);
+  }, [activeWorkflow, selectedStateId, selectedStateIds]);
 
   // Convert transitions into React Flow edges
   const initialEdges: Edge[] = useMemo(() => {
     if (!activeWorkflow) return [];
+    const selSet = new Set(selectedTransitionIds.length > 0 ? selectedTransitionIds : (selectedTransitionId ? [selectedTransitionId] : []));
     const edgesList: Edge[] = [];
     for (const st of activeWorkflow.states) {
       for (const tr of st.transitions || []) {
@@ -85,7 +90,7 @@ const WorkflowCanvasInner: React.FC = () => {
           source: tr.sourceStateId,
           target: tr.targetStateId,
           type: "customEdge",
-          selected: tr.id === selectedTransitionId,
+          selected: selSet.has(tr.id),
           data: {
             event: tr.event,
             guardName: tr.guard?.name,
@@ -95,15 +100,22 @@ const WorkflowCanvasInner: React.FC = () => {
       }
     }
     return edgesList;
-  }, [activeWorkflow, selectedTransitionId]);
+  }, [activeWorkflow, selectedTransitionId, selectedTransitionIds]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  const isUpdatingFromStoreRef = React.useRef(false);
+
   // Sync React Flow state when store activeWorkflow changes
   React.useEffect(() => {
+    isUpdatingFromStoreRef.current = true;
     setNodes(initialNodes);
     setEdges(initialEdges);
+    const timer = setTimeout(() => {
+      isUpdatingFromStoreRef.current = false;
+    }, 0);
+    return () => clearTimeout(timer);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
   // Handle Dragging Node positions
@@ -113,6 +125,18 @@ const WorkflowCanvasInner: React.FC = () => {
       updateStatePosition(activeWorkflow.id, node.id, node.position);
     },
     [activeWorkflow, updateStatePosition]
+  );
+
+  // Handle multi-selection change from React Flow box-select / shift-select
+  const onSelectionChange = useCallback(
+    ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
+      if (isUpdatingFromStoreRef.current) return;
+      setSelectedSelection(
+        nodes.map((n) => n.id),
+        edges.map((e) => e.id)
+      );
+    },
+    [setSelectedSelection]
   );
 
   // Handle Node selection
@@ -170,12 +194,10 @@ const WorkflowCanvasInner: React.FC = () => {
       const modifier = isMac ? e.metaKey : e.ctrlKey;
 
       if (modifier && e.key.toLowerCase() === "c") {
-        if (selectedStateId || selectedTransitionId) {
-          copySelection(
-            activeWorkflow.id,
-            selectedStateId ? [selectedStateId] : [],
-            selectedTransitionId ? [selectedTransitionId] : []
-          );
+        const stateIdsToCopy = selectedStateIds.length > 0 ? selectedStateIds : (selectedStateId ? [selectedStateId] : []);
+        const transitionIdsToCopy = selectedTransitionIds.length > 0 ? selectedTransitionIds : (selectedTransitionId ? [selectedTransitionId] : []);
+        if (stateIdsToCopy.length > 0 || transitionIdsToCopy.length > 0) {
+          copySelection(activeWorkflow.id, stateIdsToCopy, transitionIdsToCopy);
         }
       } else if (modifier && e.key.toLowerCase() === "v") {
         pasteSelection(activeWorkflow.id);
@@ -193,6 +215,8 @@ const WorkflowCanvasInner: React.FC = () => {
     activeWorkflow,
     selectedStateId,
     selectedTransitionId,
+    selectedStateIds,
+    selectedTransitionIds,
     copySelection,
     pasteSelection,
     duplicateState,
@@ -234,6 +258,7 @@ const WorkflowCanvasInner: React.FC = () => {
         onEdgesChange={onEdgesChange}
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
+        onSelectionChange={onSelectionChange}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}

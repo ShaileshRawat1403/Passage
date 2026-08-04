@@ -12,6 +12,7 @@ import { sampleWorkflows, vendorInvoiceWorkflow } from "../domain/sampleWorkflow
 import { validateWorkflow } from "../domain/validation";
 import { parseWorkflowDefinition } from "../domain/parser";
 import { createWorkflowRun, dispatchWorkflowEvent } from "../domain/runtime";
+import { cloneWorkflowSubgraph } from "../domain/clone";
 
 export type NavigationTab =
   | "workflows"
@@ -28,6 +29,8 @@ interface WorkflowStateStore {
 
   selectedStateId: string | null;
   selectedTransitionId: string | null;
+  selectedStateIds: string[];
+  selectedTransitionIds: string[];
 
   isAdvancedMode: boolean;
   validationIssues: ValidationIssue[];
@@ -48,6 +51,9 @@ interface WorkflowStateStore {
   setActiveWorkflowId: (id: string) => void;
   setSelectedStateId: (id: string | null) => void;
   setSelectedTransitionId: (id: string | null) => void;
+  setSelectedStateIds: (ids: string[]) => void;
+  setSelectedTransitionIds: (ids: string[]) => void;
+  setSelectedSelection: (stateIds: string[], transitionIds: string[]) => void;
   toggleAdvancedMode: () => void;
 
   // Workflow CRUD
@@ -108,6 +114,8 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
   selectedStateId: "validate-invoice",
   selectedTransitionId: null,
+  selectedStateIds: ["validate-invoice"],
+  selectedTransitionIds: [],
 
   copiedSelection: null,
 
@@ -160,8 +168,96 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     }
   },
 
-  setSelectedStateId: (id) => set({ selectedStateId: id, selectedTransitionId: null }),
-  setSelectedTransitionId: (id) => set({ selectedTransitionId: id, selectedStateId: null }),
+  setSelectedStateId: (id) => {
+    const s = get();
+    if (
+      s.selectedStateId === id &&
+      s.selectedStateIds.length === (id ? 1 : 0) &&
+      s.selectedStateIds[0] === id &&
+      s.selectedTransitionId === null &&
+      s.selectedTransitionIds.length === 0
+    ) {
+      return;
+    }
+    set({
+      selectedStateId: id,
+      selectedStateIds: id ? [id] : [],
+      selectedTransitionId: null,
+      selectedTransitionIds: [],
+    });
+  },
+
+  setSelectedTransitionId: (id) => {
+    const s = get();
+    if (
+      s.selectedTransitionId === id &&
+      s.selectedTransitionIds.length === (id ? 1 : 0) &&
+      s.selectedTransitionIds[0] === id &&
+      s.selectedStateId === null &&
+      s.selectedStateIds.length === 0
+    ) {
+      return;
+    }
+    set({
+      selectedTransitionId: id,
+      selectedTransitionIds: id ? [id] : [],
+      selectedStateId: null,
+      selectedStateIds: [],
+    });
+  },
+
+  setSelectedStateIds: (ids) => {
+    const s = get();
+    const sameStateIds =
+      s.selectedStateIds.length === ids.length &&
+      s.selectedStateIds.every((id, i) => id === ids[i]);
+    if (sameStateIds && s.selectedTransitionIds.length === 0 && s.selectedTransitionId === null) {
+      return;
+    }
+    set({
+      selectedStateIds: ids,
+      selectedStateId: ids.length === 1 ? ids[0] : null,
+      selectedTransitionId: null,
+      selectedTransitionIds: [],
+    });
+  },
+
+  setSelectedTransitionIds: (ids) => {
+    const s = get();
+    const sameTrIds =
+      s.selectedTransitionIds.length === ids.length &&
+      s.selectedTransitionIds.every((id, i) => id === ids[i]);
+    if (sameTrIds && s.selectedStateIds.length === 0 && s.selectedStateId === null) {
+      return;
+    }
+    set({
+      selectedTransitionIds: ids,
+      selectedTransitionId: ids.length === 1 ? ids[0] : null,
+      selectedStateId: null,
+      selectedStateIds: [],
+    });
+  },
+
+  setSelectedSelection: (stateIds, transitionIds) => {
+    const s = get();
+    const sameStates =
+      s.selectedStateIds.length === stateIds.length &&
+      s.selectedStateIds.every((id, i) => id === stateIds[i]);
+    const sameTransitions =
+      s.selectedTransitionIds.length === transitionIds.length &&
+      s.selectedTransitionIds.every((id, i) => id === transitionIds[i]);
+
+    if (sameStates && sameTransitions) {
+      return;
+    }
+
+    set({
+      selectedStateIds: stateIds,
+      selectedTransitionIds: transitionIds,
+      selectedStateId: stateIds.length === 1 ? stateIds[0] : null,
+      selectedTransitionId: transitionIds.length === 1 ? transitionIds[0] : null,
+    });
+  },
   toggleAdvancedMode: () => set((s) => ({ isAdvancedMode: !s.isAdvancedMode })),
 
   createWorkflow: (name, description) => {
@@ -250,9 +346,37 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       const active = updated.find((w) => w.id === state.activeWorkflowId);
       const issues = active ? validateWorkflow(active) : [];
 
+      // Reconcile selection against updated active workflow
+      let nextSelStateIds = state.selectedStateIds;
+      let nextSelTrIds = state.selectedTransitionIds;
+      let nextSelStateId = state.selectedStateId;
+      let nextSelTrId = state.selectedTransitionId;
+
+      if (active) {
+        const validStateIds = new Set(active.states.map((s) => s.id));
+        const validTrIds = new Set<string>();
+        for (const s of active.states) {
+          for (const t of s.transitions || []) validTrIds.add(t.id);
+        }
+
+        nextSelStateIds = state.selectedStateIds.filter((id) => validStateIds.has(id));
+        nextSelTrIds = state.selectedTransitionIds.filter((id) => validTrIds.has(id));
+
+        if (nextSelStateId && !validStateIds.has(nextSelStateId)) {
+          nextSelStateId = nextSelStateIds[0] || null;
+        }
+        if (nextSelTrId && !validTrIds.has(nextSelTrId)) {
+          nextSelTrId = nextSelTrIds[0] || null;
+        }
+      }
+
       return {
         workflows: updated,
         validationIssues: issues,
+        selectedStateIds: nextSelStateIds,
+        selectedTransitionIds: nextSelTrIds,
+        selectedStateId: nextSelStateId,
+        selectedTransitionId: nextSelTrId,
       };
     });
   },
@@ -297,7 +421,12 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     get().updateWorkflow(workflowId, (draft) => {
       draft.states.push(newState);
     });
-    set({ selectedStateId: newState.id, selectedTransitionId: null });
+    set({
+      selectedStateId: newState.id,
+      selectedStateIds: [newState.id],
+      selectedTransitionId: null,
+      selectedTransitionIds: [],
+    });
   },
 
   updateState: (workflowId, stateId, partial) => {
@@ -311,47 +440,31 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   duplicateState: (workflowId, stateId) => {
+    let dupId: string | null = null;
     get().updateWorkflow(workflowId, (draft) => {
       const srcState = draft.states.find((s) => s.id === stateId);
       if (!srcState) return;
 
-      const newId = `${srcState.id}-copy-${Date.now().toString().slice(-4)}`;
-      const newPos = {
-        x: (srcState.position?.x ?? 100) + 40,
-        y: (srcState.position?.y ?? 100) + 40,
-      };
-
-      const remapAction = (a: ActionDefinition): ActionDefinition => ({
-        ...a,
-        id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      });
-
-      const entryActions = (srcState.entryActions || []).map(remapAction);
-      const activeActions = (srcState.activeActions || []).map(remapAction);
-      const exitActions = (srcState.exitActions || []).map(remapAction);
-
-      const transitions: TransitionDefinition[] = (srcState.transitions || []).map((t) => ({
-        ...t,
-        id: `tr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        sourceStateId: newId,
-        targetStateId: t.targetStateId === srcState.id ? newId : t.targetStateId,
-      }));
-
-      const newState: WorkflowState = {
-        ...JSON.parse(JSON.stringify(srcState)),
-        id: newId,
-        name: `${srcState.name} (Copy)`,
-        type: srcState.type === "start" ? "atomic" : srcState.type,
-        position: newPos,
-        entryActions,
-        activeActions,
-        exitActions,
-        transitions,
-      };
-
-      draft.states.push(newState);
-      set({ selectedStateId: newId, selectedTransitionId: null });
+      const { states: clonedStates } = cloneWorkflowSubgraph(
+        [srcState],
+        srcState.transitions || [],
+        { offset: { x: 40, y: 40 } }
+      );
+      const dupState = clonedStates[0];
+      if (dupState) {
+        draft.states.push(dupState);
+        dupId = dupState.id;
+      }
     });
+
+    if (dupId) {
+      set({
+        selectedStateId: dupId,
+        selectedStateIds: [dupId],
+        selectedTransitionId: null,
+        selectedTransitionIds: [],
+      });
+    }
   },
 
   deleteState: (workflowId, stateId) => {
@@ -368,11 +481,19 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
           s.timeout.targetStateId = undefined;
         }
       });
-    });
 
-    if (get().selectedStateId === stateId) {
-      set({ selectedStateId: null });
-    }
+      // Handle initial state deletion explicitly
+      if (draft.initialStateId === stateId) {
+        const remainingStart = draft.states.find((s) => s.type === "start");
+        if (remainingStart) {
+          draft.initialStateId = remainingStart.id;
+        } else if (draft.states.length > 0 && draft.states[0]) {
+          draft.initialStateId = draft.states[0].id;
+        } else {
+          draft.initialStateId = "";
+        }
+      }
+    });
   },
 
   updateStatePosition: (workflowId, stateId, pos) => {
@@ -392,12 +513,28 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
     get().updateWorkflow(workflowId, (draft) => {
       const srcState = draft.states.find((s) => s.id === trWithDefaults.sourceStateId);
-      if (srcState) {
-        srcState.transitions = [...(srcState.transitions || []), trWithDefaults];
+      const targetState = draft.states.find((s) => s.id === trWithDefaults.targetStateId);
+
+      // Reject creation if either source or target state does not exist
+      if (!srcState || !targetState) {
+        return;
       }
+
+      srcState.transitions = [...(srcState.transitions || []), trWithDefaults];
     });
 
-    set({ selectedTransitionId: trWithDefaults.id, selectedStateId: null });
+    const currentWf = get().workflows.find((w) => w.id === workflowId);
+    const exists = currentWf?.states.some((s) =>
+      (s.transitions || []).some((t) => t.id === trWithDefaults.id)
+    );
+    if (exists) {
+      set({
+        selectedTransitionId: trWithDefaults.id,
+        selectedTransitionIds: [trWithDefaults.id],
+        selectedStateId: null,
+        selectedStateIds: [],
+      });
+    }
   },
 
   updateTransition: (workflowId, transitionId, partial) => {
@@ -419,6 +556,12 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
       // Check if sourceStateId is being changed
       if (partial.sourceStateId && partial.sourceStateId !== currentSrcId) {
+        // Validate that requested new source state actually exists
+        const newSrcState = draft.states.find((s) => s.id === partial.sourceStateId);
+        if (!newSrcState) {
+          return; // Do NOT remove or mutate current transition if new source is invalid
+        }
+
         // Remove from old state
         const oldState = draft.states.find((s) => s.id === currentSrcId);
         if (oldState) {
@@ -426,13 +569,16 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         }
 
         // Update transition
-        const updatedTr: TransitionDefinition = { ...currentTr, ...partial, id: currentTr.id };
+        const updatedTr: TransitionDefinition = {
+          ...currentTr,
+          ...partial,
+          id: currentTr.id,
+          sourceStateId: partial.sourceStateId,
+          targetStateId: partial.targetStateId ?? currentTr.targetStateId,
+        };
 
         // Add to new source state
-        const newSrcState = draft.states.find((s) => s.id === partial.sourceStateId);
-        if (newSrcState) {
-          newSrcState.transitions = [...(newSrcState.transitions || []), updatedTr];
-        }
+        newSrcState.transitions = [...(newSrcState.transitions || []), updatedTr];
       } else {
         // Simple property update in existing source state
         const srcState = draft.states.find((s) => s.id === currentSrcId);
@@ -463,29 +609,37 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         state.transitions = (state.transitions || []).filter((t) => t.id !== transitionId);
       }
     });
-
-    if (get().selectedTransitionId === transitionId) {
-      set({ selectedTransitionId: null });
-    }
   },
 
   copySelection: (workflowId, stateIds, transitionIds) => {
     const wf = get().workflows.find((w) => w.id === workflowId);
     if (!wf) return;
 
-    const targetStates = wf.states.filter((s) => stateIds.includes(s.id));
-    const targetStateIdSet = new Set(targetStates.map((s) => s.id));
+    const targetStateIdSet = new Set(stateIds);
 
-    // Transitions are copied ONLY when both source AND target states are inside the copied selection
+    // If transitionIds were explicitly passed without their endpoints, include endpoints automatically
+    for (const st of wf.states) {
+      for (const tr of st.transitions || []) {
+        if (transitionIds.includes(tr.id)) {
+          targetStateIdSet.add(tr.sourceStateId);
+          targetStateIdSet.add(tr.targetStateId);
+        }
+      }
+    }
+
+    const targetStates = wf.states.filter((s) => targetStateIdSet.has(s.id));
+
+    // Transitions are included when both endpoints are in targetStateIdSet
     const targetTransitions: TransitionDefinition[] = [];
     for (const st of wf.states) {
       for (const tr of st.transitions || []) {
         if (
-          (transitionIds.includes(tr.id) || targetStateIdSet.has(tr.sourceStateId)) &&
           targetStateIdSet.has(tr.sourceStateId) &&
           targetStateIdSet.has(tr.targetStateId)
         ) {
-          targetTransitions.push(tr);
+          if (!targetTransitions.some((t) => t.id === tr.id)) {
+            targetTransitions.push(tr);
+          }
         }
       }
     }
@@ -502,66 +656,27 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     const clip = get().copiedSelection;
     if (!clip || clip.states.length === 0) return;
 
+    let createdStateIds: string[] = [];
+
     get().updateWorkflow(workflowId, (draft) => {
-      const stateIdMap = new Map<string, string>();
-      const createdStates: WorkflowState[] = [];
+      const { states: clonedStates } = cloneWorkflowSubgraph(
+        clip.states,
+        clip.transitions,
+        { offset }
+      );
 
-      for (const st of clip.states) {
-        const newId = `${st.id}-paste-${Date.now().toString().slice(-4)}-${Math.random().toString(36).substring(2, 5)}`;
-        stateIdMap.set(st.id, newId);
-
-        const remapAction = (a: ActionDefinition): ActionDefinition => ({
-          ...a,
-          id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        });
-
-        const newPos = {
-          x: (st.position?.x ?? 100) + offset.x,
-          y: (st.position?.y ?? 100) + offset.y,
-        };
-
-        const clonedState: WorkflowState = {
-          ...JSON.parse(JSON.stringify(st)),
-          id: newId,
-          name: `${st.name} (Copy)`,
-          type: st.type === "start" ? "atomic" : st.type,
-          position: newPos,
-          entryActions: (st.entryActions || []).map(remapAction),
-          activeActions: (st.activeActions || []).map(remapAction),
-          exitActions: (st.exitActions || []).map(remapAction),
-          transitions: [],
-        };
-
-        createdStates.push(clonedState);
-      }
-
-      // Remap transitions
-      for (const tr of clip.transitions) {
-        const newSourceId = stateIdMap.get(tr.sourceStateId);
-        const newTargetId = stateIdMap.get(tr.targetStateId);
-
-        if (newSourceId && newTargetId) {
-          const newTr: TransitionDefinition = {
-            ...JSON.parse(JSON.stringify(tr)),
-            id: `tr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            sourceStateId: newSourceId,
-            targetStateId: newTargetId,
-          };
-
-          const srcState = createdStates.find((s) => s.id === newSourceId);
-          if (srcState) {
-            srcState.transitions.push(newTr);
-          }
-        }
-      }
-
-      draft.states.push(...createdStates);
-
-      const firstCreated = createdStates[0];
-      if (firstCreated) {
-        set({ selectedStateId: firstCreated.id, selectedTransitionId: null });
-      }
+      draft.states.push(...clonedStates);
+      createdStateIds = clonedStates.map((s) => s.id);
     });
+
+    if (createdStateIds.length > 0) {
+      set({
+        selectedStateId: createdStateIds[0],
+        selectedStateIds: createdStateIds,
+        selectedTransitionId: null,
+        selectedTransitionIds: [],
+      });
+    }
   },
 
   deleteSelection: (workflowId, stateIds, transitionIds) => {
@@ -585,17 +700,19 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
           s.timeout.targetStateId = undefined;
         }
       }
+
+      // Handle initial state deletion explicitly
+      if (stateSet.has(draft.initialStateId)) {
+        const remainingStart = draft.states.find((s) => s.type === "start");
+        if (remainingStart) {
+          draft.initialStateId = remainingStart.id;
+        } else if (draft.states.length > 0 && draft.states[0]) {
+          draft.initialStateId = draft.states[0].id;
+        } else {
+          draft.initialStateId = "";
+        }
+      }
     });
-
-    const currSelState = get().selectedStateId;
-    const currSelTr = get().selectedTransitionId;
-
-    if (currSelState && stateIds.includes(currSelState)) {
-      set({ selectedStateId: null });
-    }
-    if (currSelTr && transitionIds.includes(currSelTr)) {
-      set({ selectedTransitionId: null });
-    }
   },
 
   addActionToState: (workflowId, stateId, phase, action) => {
