@@ -1,17 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Trash2,
   AlertCircle,
   ChevronDown,
   ChevronRight,
-  ShieldAlert,
-  ArrowRight,
   Sliders,
-  FileText,
 } from "lucide-react";
 import { TransitionDefinition, WorkflowDefinition, ValidationIssue } from "../../types/workflow";
 import { useWorkflowStore } from "../../store/workflowStore";
-import { describeTransition, formatGuard } from "../../domain/transitionFormatter";
+import { describeTransition, checkGuardIncomplete } from "../../domain/transitionFormatter";
+import { classifyWorkflowEdges } from "../../lib/layout/classification";
 import { GuardBuilder } from "./GuardBuilder";
 
 interface HumanReadableTransitionEditorProps {
@@ -32,31 +30,47 @@ export const HumanReadableTransitionEditor: React.FC<HumanReadableTransitionEdit
   } = useWorkflowStore();
 
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [priorityDraft, setPriorityDraft] = useState<string>(
+    String(transition.priority ?? 10)
+  );
+
+  useEffect(() => {
+    setPriorityDraft(String(transition.priority ?? 10));
+  }, [transition.id, transition.priority]);
 
   const desc = describeTransition(transition, workflow);
+  const edgeKinds = classifyWorkflowEdges(workflow);
+  const edgeKind = edgeKinds[transition.id] || "forward";
 
-  // Filter validation issues for this transition
+  // Filter validation issues for this transition, including ambiguous route warnings/errors
   const transitionIssues = validationIssues.filter(
-    (issue) => issue.transitionId === transition.id
+    (issue) =>
+      issue.transitionId === transition.id ||
+      (issue.stateId === transition.sourceStateId &&
+        issue.message.toLowerCase().includes("ambiguous") &&
+        transition.event &&
+        issue.message.includes(`"${transition.event}"`))
   );
 
   const handlePriorityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    if (val === "") {
-      updateTransition(workflow.id, transition.id, { priority: 0 });
-      return;
-    }
-    const parsed = parseInt(val, 10);
-    if (!isNaN(parsed)) {
-      updateTransition(workflow.id, transition.id, { priority: parsed });
+    setPriorityDraft(val);
+
+    if (val !== "") {
+      const parsed = Number(val);
+      if (Number.isInteger(parsed)) {
+        updateTransition(workflow.id, transition.id, { priority: parsed });
+      }
     }
   };
 
-  const isGuardIncomplete =
-    transition.guard &&
-    transition.guard.conditions &&
-    transition.guard.conditions.length > 0 &&
-    transition.guard.conditions.some((c) => !c.field || !c.field.trim() || !c.operator);
+  const handlePriorityBlur = () => {
+    if (priorityDraft === "" || !Number.isInteger(Number(priorityDraft))) {
+      setPriorityDraft(String(transition.priority ?? 10));
+    }
+  };
+
+  const isGuardIncomplete = checkGuardIncomplete(transition.guard);
 
   return (
     <div className="space-y-4 text-xs select-none">
@@ -66,6 +80,19 @@ export const HumanReadableTransitionEditor: React.FC<HumanReadableTransitionEdit
           <span className="text-cyan-400 font-bold uppercase text-[10px] w-12 shrink-0">FROM</span>
           <span className="font-semibold text-slate-100">{desc.sourceLabel}</span>
           <span className="text-[10px] text-slate-400 font-normal">({transition.sourceStateId})</span>
+          <span
+            className={`ml-auto px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold ${
+              edgeKind === "loopback"
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                : edgeKind === "branch"
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                : edgeKind === "self_loop"
+                ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+            }`}
+          >
+            {edgeKind}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-cyan-400 font-bold uppercase text-[10px] w-12 shrink-0">WHEN</span>
@@ -167,7 +194,7 @@ export const HumanReadableTransitionEditor: React.FC<HumanReadableTransitionEdit
             >
               {workflow.states.map((st) => (
                 <option key={st.id} value={st.id} className="bg-[#020617] text-slate-200">
-                  {st.name} ({st.id})
+                  {st.name} · {st.type} · {st.id}
                 </option>
               ))}
             </select>
@@ -186,7 +213,7 @@ export const HumanReadableTransitionEditor: React.FC<HumanReadableTransitionEdit
             >
               {workflow.states.map((st) => (
                 <option key={st.id} value={st.id} className="bg-[#020617] text-slate-200">
-                  {st.name} ({st.id})
+                  {st.name} · {st.type} · {st.id}
                 </option>
               ))}
             </select>
@@ -222,8 +249,10 @@ export const HumanReadableTransitionEditor: React.FC<HumanReadableTransitionEdit
           </p>
           <input
             type="number"
-            value={transition.priority ?? 0}
+            step={1}
+            value={priorityDraft}
             onChange={handlePriorityChange}
+            onBlur={handlePriorityBlur}
             className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-purple-300 font-mono font-bold text-xs outline-none focus:border-purple-400 transition-colors"
           />
         </div>

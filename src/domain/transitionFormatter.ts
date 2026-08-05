@@ -10,6 +10,30 @@ export interface TransitionDescription {
   typeLabel: string;
 }
 
+export const VALUE_FREE_OPERATORS = new Set([
+  "exists",
+  "does_not_exist",
+  "is_true",
+  "is_false",
+]);
+
+export function checkGuardIncomplete(guard?: GuardDefinition | null): boolean {
+  if (!guard || !guard.conditions || guard.conditions.length === 0) {
+    return false;
+  }
+  return guard.conditions.some((c) => {
+    if (!c.field || !c.field.trim() || !c.operator) {
+      return true;
+    }
+    if (!VALUE_FREE_OPERATORS.has(c.operator)) {
+      if (c.value === undefined || c.value === null || String(c.value).trim() === "") {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
 export function formatConditionRule(rule: ConditionRule): string {
   const fieldName = rule.field ? rule.field.trim() : "Condition";
   const opMap: Record<string, string> = {

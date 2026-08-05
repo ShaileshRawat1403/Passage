@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useWorkflowStore, resetWorkflowStore } from "../src/store/workflowStore";
 import { WorkflowDefinition, TransitionDefinition } from "../src/types/workflow";
-import { describeTransition, formatGuard, formatConditionRule } from "../src/domain/transitionFormatter";
+import { describeTransition, formatGuard, formatConditionRule, checkGuardIncomplete } from "../src/domain/transitionFormatter";
 import { validateWorkflow } from "../src/domain/validation";
 import { classifyWorkflowEdges } from "../src/lib/layout/classification";
 import { createWorkflowRun } from "../src/domain/runtime";
@@ -506,22 +506,27 @@ describe("P1.4 — Human-Readable Transition Editor", () => {
     expect(kinds["tr-init"]).toBe("forward");
 
     // Edit transition target to form a self-loop
-    store.updateTransition(testWfId, "tr-init", { targetStateId: startState.id });
+    store.updateTransition(testWfId, "tr-init", { targetStateId: startState.id, event: "SELF_LOOP_EVENT" });
 
-    kinds = classifyWorkflowEdges(useWorkflowStore.getState().workflows.find((w) => w.id === testWfId)!);
+    const updatedWf = useWorkflowStore.getState().workflows.find((w) => w.id === testWfId)!;
+    kinds = classifyWorkflowEdges(updatedWf);
     expect(kinds["tr-init"]).toBe("self_loop");
+
+    // Check edge description formatting reflect updated event and classification
+    const updatedTr = updatedWf.states.flatMap((s) => s.transitions).find((t) => t.id === "tr-init")!;
+    const desc = describeTransition(updatedTr, updatedWf);
+    expect(desc.eventLabel).toBe("SELF_LOOP_EVENT");
   });
 
   it("20. Runtime runs and audit records remain unchanged", () => {
     const store = useWorkflowStore.getState();
+    const run = store.startNewRun(testWfId);
+    expect(run).toBeDefined();
+
+    const runsBefore = JSON.parse(JSON.stringify(useWorkflowStore.getState().activeRuns.filter((r) => r.workflowId === testWfId)));
+    const historyBefore = JSON.parse(JSON.stringify(store.historyByWorkflowId[testWfId] || { past: [], future: [] }));
+
     const wf = store.workflows.find((w) => w.id === testWfId)!;
-
-    // Start a run
-    const run = createWorkflowRun(wf, { name: "Run for P1.4 Test" });
-    expect(run.status).toBe("active");
-    expect(run.history.length).toBeGreaterThan(0);
-
-    // Edit transition definition on workflow
     const startState = wf.states.find((s) => s.type === "start")!;
     const atomicState = wf.states.find((s) => s.type === "atomic")!;
 
@@ -532,9 +537,102 @@ describe("P1.4 — Human-Readable Transition Editor", () => {
       event: "RUNTIME_EVENT",
     });
 
-    // Run status and history remain completely unchanged
-    expect(run.status).toBe("active");
-    expect(run.workflowId).toBe(wf.id);
-    expect(run.history.length).toBeGreaterThan(0);
+    const storeAfter = useWorkflowStore.getState();
+    const runsAfter = JSON.parse(JSON.stringify(storeAfter.activeRuns.filter((r) => r.workflowId === testWfId)));
+
+    // Active runs and their execution histories remain completely untouched by transition edits
+    expect(runsAfter).toEqual(runsBefore);
+  });
+
+  it("21. checkGuardIncomplete detects incomplete rules accurately", () => {
+    // Value-free operators complete without value
+    expect(checkGuardIncomplete({
+      id: "g1",
+      name: "Guard 1",
+      logic: "ALL",
+      conditions: [{ id: "c1", field: "amount", operator: "exists" }],
+    })).toBe(false);
+
+    expect(checkGuardIncomplete({
+      id: "g2",
+      name: "Guard 2",
+      logic: "ALL",
+      conditions: [{ id: "c2", field: "isApproved", operator: "is_true" }],
+    })).toBe(false);
+
+    // Value-requiring operators without value are incomplete
+    expect(checkGuardIncomplete({
+      id: "g3",
+      name: "Guard 3",
+      logic: "ALL",
+      conditions: [{ id: "c3", field: "amount", operator: "equals", value: "" }],
+    })).toBe(true);
+
+    expect(checkGuardIncomplete({
+      id: "g4",
+      name: "Guard 4",
+      logic: "ALL",
+      conditions: [{ id: "c4", field: "status", operator: "is_one_of" }],
+    })).toBe(true);
+
+    // Complete condition with value
+    expect(checkGuardIncomplete({
+      id: "g5",
+      name: "Guard 5",
+      logic: "ALL",
+      conditions: [{ id: "c5", field: "amount", operator: "greater_than", value: "100" }],
+    })).toBe(false);
+  });
+
+  it("22. Equal-priority ambiguous routes produce per-transition validation issues", () => {
+    const store = useWorkflowStore.getState();
+    const wf = store.workflows.find((w) => w.id === testWfId)!;
+    const startState = wf.states.find((s) => s.type === "start")!;
+    const atomicState = wf.states.find((s) => s.type === "atomic")!;
+    const finalState = wf.states.find((s) => s.type === "final")!;
+
+    store.addTransition(testWfId, {
+      id: "tr-ambig-1",
+      sourceStateId: startState.id,
+      targetStateId: atomicState.id,
+      event: "SAME_EVENT",
+      priority: 10,
+    });
+
+    store.addTransition(testWfId, {
+      id: "tr-ambig-2",
+      sourceStateId: startState.id,
+      targetStateId: finalState.id,
+      event: "SAME_EVENT",
+      priority: 10,
+    });
+
+    const issues = validateWorkflow(useWorkflowStore.getState().workflows.find((w) => w.id === testWfId)!);
+    const ambig1Issues = issues.filter((i) => i.transitionId === "tr-ambig-1");
+    const ambig2Issues = issues.filter((i) => i.transitionId === "tr-ambig-2");
+
+    expect(ambig1Issues.length).toBeGreaterThan(0);
+    expect(ambig2Issues.length).toBeGreaterThan(0);
+    expect(ambig1Issues[0]?.message).toContain("non-deterministic");
+  });
+
+  it("23. addTransition with empty ID auto-generates designer ID from occupied set", () => {
+    const store = useWorkflowStore.getState();
+    const wf = store.workflows.find((w) => w.id === testWfId)!;
+    const startState = wf.states.find((s) => s.type === "start")!;
+    const atomicState = wf.states.find((s) => s.type === "atomic")!;
+
+    store.addTransition(testWfId, {
+      id: "",
+      sourceStateId: startState.id,
+      targetStateId: atomicState.id,
+      event: "DESIGNER_ID_EVENT",
+    });
+
+    const updatedWf = useWorkflowStore.getState().workflows.find((w) => w.id === testWfId)!;
+    const tr = updatedWf.states.flatMap((s) => s.transitions).find((t) => t.event === "DESIGNER_ID_EVENT")!;
+
+    expect(tr.id).toMatch(/^tr-/);
+    expect(tr.id).not.toContain("tr-17"); // Not timestamp based
   });
 });

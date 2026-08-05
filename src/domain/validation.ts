@@ -221,14 +221,17 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
       if (trList.length > 1) {
         const priorities = trList.map((t) => t.priority ?? 0);
         const maxP = Math.max(...priorities);
-        const topCount = priorities.filter((p) => p === maxP).length;
-        if (topCount > 1) {
-          issues.push({
-            id: `err-ambiguous-transitions-${state.id}-${evt}`,
-            severity: "error",
-            stateId: state.id,
-            message: `State "${state.name}" has ${topCount} transitions for event "${evt}" with identical highest priority (${maxP}). This creates ambiguous non-deterministic transition selection.`,
-          });
+        const topTransitions = trList.filter((t) => (t.priority ?? 0) === maxP);
+        if (topTransitions.length > 1) {
+          for (const tr of topTransitions) {
+            issues.push({
+              id: `err-ambiguous-transition-${state.id}-${evt}-${tr.id}`,
+              severity: "error",
+              stateId: state.id,
+              transitionId: tr.id,
+              message: `State "${state.name}" has ${topTransitions.length} transitions for event "${evt}" with identical highest priority (${maxP}). Route "${tr.id}" is non-deterministic.`,
+            });
+          }
         }
       }
     }

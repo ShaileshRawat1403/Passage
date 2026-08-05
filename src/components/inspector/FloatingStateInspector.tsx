@@ -369,7 +369,7 @@ export const FloatingStateInspector: React.FC = () => {
                           const targetState = activeWorkflow?.states.find((s) => s.id !== activeState.id);
                           if (targetState) {
                             addTransition(activeWorkflowId, {
-                              id: `tr-${Date.now()}`,
+                              id: "",
                               sourceStateId: activeState.id,
                               targetStateId: targetState.id,
                               event: "NEXT_EVENT",
