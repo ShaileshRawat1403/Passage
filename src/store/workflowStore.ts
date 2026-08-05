@@ -57,10 +57,10 @@ export interface WorkflowHistory {
 }
 
 export type NavigationTab =
-
-  | "workflows"
+  | "home"
   | "designer"
   | "runs"
+  | "workflows"
   | "connections"
   | "components"
   | "settings";
@@ -167,7 +167,7 @@ interface WorkflowStateStore {
 export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   workflows: sampleWorkflows,
   activeWorkflowId: vendorInvoiceWorkflow.id,
-  activeTab: "designer",
+  activeTab: "home",
 
   selectedStateId: "validate-invoice",
   selectedTransitionId: null,
@@ -1120,7 +1120,7 @@ export function createInitialTestStore() {
   return {
     workflows: initialSamples,
     activeWorkflowId: initialWf.id,
-    activeTab: "designer" as NavigationTab,
+    activeTab: "home" as NavigationTab,
 
     selectedStateId: "validate-invoice",
     selectedTransitionId: null,

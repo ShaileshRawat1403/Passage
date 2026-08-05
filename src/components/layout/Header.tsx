@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Home,
   Layers,
   Sparkles,
   Play,
@@ -28,7 +29,6 @@ export const Header: React.FC = () => {
     setActiveWorkflowId,
     activeTab,
     setActiveTab,
-    validationIssues,
     startNewRun,
   } = useWorkflowStore();
 
@@ -43,15 +43,23 @@ export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const activeWorkflow = workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
-  const errorCount = validationIssues.filter((i) => i.severity === "error").length;
-  const warningCount = validationIssues.filter((i) => i.severity === "warning").length;
+
+  const navigationTabs = [
+    { id: "home", label: "Home", icon: Home },
+    { id: "designer", label: "Designer", icon: Layers },
+    { id: "runs", label: "Runs", icon: Activity },
+    { id: "workflows", label: "Workflows", icon: List },
+    { id: "connections", label: "Connections", icon: Plug },
+    { id: "components", label: "Components", icon: Package },
+    { id: "settings", label: "Governance", icon: Settings },
+  ];
 
   return (
     <>
       <header className="h-14 bg-black/40 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 flex items-center justify-between text-xs select-none z-30 relative gap-2">
         {/* Brand, Drawer Toggles & Workflow Selector */}
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          {/* Drawer Toggle Controls (Designer tab) */}
+          {/* Drawer Toggle Controls (Designer tab only) */}
           {activeTab === "designer" && (
             <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
               <button
@@ -79,13 +87,18 @@ export const Header: React.FC = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary-rgb),0.25)] shrink-0">
+          {/* Passage Brand Logo */}
+          <button
+            onClick={() => setActiveTab("home")}
+            className="flex items-center gap-2 shrink-0 cursor-pointer group text-left outline-none"
+            title="Return to Passage Home"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary-rgb),0.25)] group-hover:border-cyan-400 transition-colors shrink-0">
               <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             </div>
             <div className="hidden md:flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
-                <span className="font-black tracking-[0.2em] text-sm text-white font-mono uppercase drop-shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]">
+                <span className="font-black tracking-[0.2em] text-sm text-white font-mono uppercase drop-shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)] group-hover:text-cyan-300 transition-colors">
                   PASSAGE
                 </span>
               </div>
@@ -93,34 +106,30 @@ export const Header: React.FC = () => {
                 Human-readable workflow orchestration
               </p>
             </div>
-          </div>
+          </button>
 
-          <div className="hidden lg:block h-5 w-px bg-white/10 shrink-0" />
-
-          {/* Workflow Picker */}
-          <select
-            value={activeWorkflowId}
-            onChange={(e) => setActiveWorkflowId(e.target.value)}
-            className="bg-white/5 border border-white/10 hover:border-cyan-500/50 text-slate-200 font-semibold text-xs px-2.5 py-1.5 rounded-lg outline-none font-mono focus:border-cyan-400 transition-colors max-w-[140px] sm:max-w-[200px] truncate"
-          >
-            {workflows.map((wf) => (
-              <option key={wf.id} value={wf.id} className="bg-[#020617] text-slate-200">
-                {wf.name} (v{wf.version})
-              </option>
-            ))}
-          </select>
+          {/* Workflow Picker - Hidden on Home */}
+          {activeTab !== "home" && (
+            <>
+              <div className="hidden lg:block h-5 w-px bg-white/10 shrink-0" />
+              <select
+                value={activeWorkflowId}
+                onChange={(e) => setActiveWorkflowId(e.target.value)}
+                className="bg-white/5 border border-white/10 hover:border-cyan-500/50 text-slate-200 font-semibold text-xs px-2.5 py-1.5 rounded-lg outline-none font-mono focus:border-cyan-400 transition-colors max-w-[140px] sm:max-w-[200px] truncate cursor-pointer"
+              >
+                {workflows.map((wf) => (
+                  <option key={wf.id} value={wf.id} className="bg-[#020617] text-slate-200">
+                    {wf.name} (v{wf.version})
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         {/* Main Navigation Tabs - Desktop */}
         <div className="hidden md:flex items-center bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-sm max-w-full overflow-x-auto no-scrollbar">
-          {[
-            { id: "designer", label: "Designer", icon: Layers },
-            { id: "runs", label: "Runs", icon: Activity },
-            { id: "workflows", label: "Workflows", icon: List },
-            { id: "connections", label: "Connections", icon: Plug },
-            { id: "components", label: "Components", icon: Package },
-            { id: "settings", label: "Governance", icon: Settings },
-          ].map((tab) => {
+          {navigationTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -147,16 +156,16 @@ export const Header: React.FC = () => {
             <ThemeSelector />
           </div>
 
-          {/* Lifecycle Status Pill */}
-          {activeWorkflow && (
+          {/* Lifecycle Status Pill - Hidden on Home */}
+          {activeTab !== "home" && activeWorkflow && (
             <div className="hidden lg:flex px-2 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider border items-center gap-1 bg-white/5 border-white/10 text-slate-300">
               <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
               <span>Status: {activeWorkflow.status}</span>
             </div>
           )}
 
-          {/* Derived Readiness Pill */}
-          {activeWorkflow && (() => {
+          {/* Derived Readiness Pill - Hidden on Home */}
+          {activeTab !== "home" && activeWorkflow && (() => {
             const readiness = getWorkflowReadiness(activeWorkflow);
             const badgeStyles =
               readiness === "executable"
@@ -198,19 +207,21 @@ export const Header: React.FC = () => {
             <span className="hidden sm:inline">Describe (AI)</span>
           </button>
 
-          {/* Run / Simulate */}
-          <button
-            onClick={() => {
-              if (activeWorkflow) {
-                startNewRun(activeWorkflow.id);
-                setActiveTab("runs");
-              }
-            }}
-            className="px-3 sm:px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] transition-all cursor-pointer"
-          >
-            <Play className="w-3.5 h-3.5 fill-slate-950" />
-            <span className="hidden sm:inline">Simulate Case</span>
-          </button>
+          {/* Run / Simulate - Hidden on Home */}
+          {activeTab !== "home" && (
+            <button
+              onClick={() => {
+                if (activeWorkflow) {
+                  startNewRun(activeWorkflow.id);
+                  setActiveTab("runs");
+                }
+              }}
+              className="px-3 sm:px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] transition-all cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5 fill-slate-950" />
+              <span className="hidden sm:inline">Simulate Case</span>
+            </button>
+          )}
 
           {/* Mobile Menu Button */}
           <button
@@ -226,14 +237,7 @@ export const Header: React.FC = () => {
       {mobileMenuOpen && (
         <div className="md:hidden bg-slate-950/95 border-b border-white/10 backdrop-blur-2xl p-4 space-y-2 z-40 relative font-mono text-xs">
           <div className="grid grid-cols-2 gap-2">
-            {[
-              { id: "designer", label: "Designer", icon: Layers },
-              { id: "runs", label: "Runs", icon: Activity },
-              { id: "workflows", label: "Workflows", icon: List },
-              { id: "connections", label: "Connections", icon: Plug },
-              { id: "components", label: "Components", icon: Package },
-              { id: "settings", label: "Governance", icon: Settings },
-            ].map((tab) => {
+            {navigationTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
@@ -243,7 +247,7 @@ export const Header: React.FC = () => {
                     setActiveTab(tab.id as NavigationTab);
                     setMobileMenuOpen(false);
                   }}
-                  className={`p-2.5 rounded-xl font-semibold flex items-center gap-2 border transition-all ${
+                  className={`p-2.5 rounded-xl font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
                     isActive
                       ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/40"
                       : "bg-white/5 text-slate-300 border-white/10"

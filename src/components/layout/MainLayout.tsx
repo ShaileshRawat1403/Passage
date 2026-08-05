@@ -5,7 +5,7 @@ import { WorkflowCanvas } from "../canvas/WorkflowCanvas";
 import { WorkflowDiagnosticsPanel } from "../inspector/WorkflowDiagnosticsPanel";
 import { SimulationBar } from "../runtime/SimulationBar";
 import { RunTimeline } from "../runtime/RunTimeline";
-import { DashboardView } from "../views/DashboardView";
+import { HomeView } from "../views/HomeView";
 import { WorkflowListView } from "../views/WorkflowListView";
 import { ConnectionsView } from "../views/ConnectionsView";
 import { ComponentsView } from "../views/ComponentsView";
@@ -49,6 +49,12 @@ export const MainLayout: React.FC = () => {
 
       {/* Main Workspace Area */}
       <div className="flex-1 flex overflow-hidden relative z-10">
+        {activeTab === "home" && (
+          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <HomeView />
+          </div>
+        )}
+
         {activeTab === "designer" && (
           <>
             <Sidebar />

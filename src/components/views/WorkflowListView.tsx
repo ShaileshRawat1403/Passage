@@ -1,27 +1,14 @@
 import React, { useState } from "react";
 import { Plus, Download, Upload, ArrowRight } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
+import { CreateWorkflowDialog } from "../workflows/CreateWorkflowDialog";
+import { ImportWorkflowDialog } from "../workflows/ImportWorkflowDialog";
 
 export const WorkflowListView: React.FC = () => {
-  const {
-    workflows,
-    setActiveWorkflowId,
-    setActiveTab,
-    createWorkflow,
-    importWorkflowJson,
-  } = useWorkflowStore();
+  const { workflows, setActiveWorkflowId, setActiveTab } = useWorkflowStore();
 
-  const [jsonInput, setJsonInput] = useState("");
   const [showImport, setShowImport] = useState(false);
-  const [newWfName, setNewWfName] = useState("");
   const [showNewModal, setShowNewModal] = useState(false);
-
-  const handleCreateNew = () => {
-    if (!newWfName.trim()) return;
-    createWorkflow(newWfName, "Custom Passage Process");
-    setNewWfName("");
-    setShowNewModal(false);
-  };
 
   const handleExport = (wfId: string) => {
     const wf = workflows.find((w) => w.id === wfId);
@@ -49,7 +36,7 @@ export const WorkflowListView: React.FC = () => {
 
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setShowImport(!showImport)}
+            onClick={() => setShowImport(true)}
             className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5 text-cyan-400" />
@@ -64,31 +51,6 @@ export const WorkflowListView: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {showImport && (
-        <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3 backdrop-blur-xl">
-          <label className="block text-slate-400 font-mono text-[10px] uppercase tracking-wider">
-            Paste Workflow JSON Definition
-          </label>
-          <textarea
-            rows={5}
-            value={jsonInput}
-            onChange={(e) => setJsonInput(e.target.value)}
-            placeholder="Paste exported Passage JSON schema here..."
-            className="w-full p-3 rounded-xl bg-black/50 border border-white/10 text-cyan-400 font-mono text-xs outline-none focus:border-cyan-400"
-          />
-          <button
-            onClick={() => {
-              importWorkflowJson(jsonInput);
-              setJsonInput("");
-              setShowImport(false);
-            }}
-            className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold cursor-pointer"
-          >
-            Import Into Designer
-          </button>
-        </div>
-      )}
 
       {/* Workflows List */}
       <div className="space-y-3">
@@ -133,35 +95,8 @@ export const WorkflowListView: React.FC = () => {
         ))}
       </div>
 
-      {/* Modal for new workflow */}
-      {showNewModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="p-6 rounded-2xl bg-slate-950 border border-white/10 w-full max-w-md space-y-4 shadow-2xl">
-            <h3 className="font-bold text-sm text-slate-100 uppercase font-mono tracking-wider">Create New Workflow Map</h3>
-            <input
-              type="text"
-              value={newWfName}
-              onChange={(e) => setNewWfName(e.target.value)}
-              placeholder="e.g. Employee Onboarding State Machine"
-              className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none font-semibold text-xs focus:border-cyan-400"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="px-4 py-2 rounded-xl bg-white/5 text-slate-400 hover:text-slate-200 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateNew}
-                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold cursor-pointer"
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateWorkflowDialog isOpen={showNewModal} onClose={() => setShowNewModal(false)} />
+      <ImportWorkflowDialog isOpen={showImport} onClose={() => setShowImport(false)} />
     </div>
   );
 };
