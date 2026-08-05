@@ -1,6 +1,6 @@
 import { WorkflowDefinition } from "../../types/workflow";
 import { ElkLayoutEngine } from "./elkEngine";
-import { WorkflowLayoutOptions, WorkflowLayoutResult } from "./types";
+import { WorkflowLayoutEngine, WorkflowLayoutOptions, WorkflowLayoutResult } from "./types";
 
 export * from "./types";
 export * from "./dimensions";
@@ -8,9 +8,10 @@ export { ElkLayoutEngine };
 
 export async function computeWorkflowLayout(
   workflow: WorkflowDefinition,
-  options: WorkflowLayoutOptions
+  options: WorkflowLayoutOptions,
+  customEngine?: WorkflowLayoutEngine
 ): Promise<WorkflowLayoutResult> {
-  const engine = new ElkLayoutEngine();
+  const engine = customEngine || new ElkLayoutEngine();
 
   // 1. Sort states by stable state ID
   const states = [...workflow.states].sort((a, b) => a.id.localeCompare(b.id));

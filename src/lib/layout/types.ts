@@ -34,7 +34,7 @@ export interface WorkflowLayoutWarning {
 export interface WorkflowLayoutGraph {
   states: { id: string; type: string }[];
   initialStateId?: string;
-  transitions: { id: string; sourceStateId: string; targetStateId: string }[];
+  transitions: { id: string; sourceStateId: string; targetStateId: string; priority?: number }[];
 }
 
 export interface WorkflowLayoutEngine {

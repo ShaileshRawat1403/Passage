@@ -18,7 +18,6 @@ export class ElkLayoutEngine implements WorkflowLayoutEngine {
     const elk = new ELK();
     const warnings: WorkflowLayoutWarning[] = [];
     const positions: Record<string, LayoutPoint> = {};
-    const edgeKinds: Record<string, "forward" | "branch" | "loopback" | "self_loop" | "cross_component"> = {};
 
     // Validate graph
     const stateIds = new Set<string>();
@@ -31,7 +30,7 @@ export class ElkLayoutEngine implements WorkflowLayoutEngine {
       stateIds.add(state.id);
     }
 
-    // Component detection using BFS
+    // Component detection and transition validation
     const adj = new Map<string, string[]>();
     for (const id of stateIds) adj.set(id, []);
     
@@ -50,25 +49,6 @@ export class ElkLayoutEngine implements WorkflowLayoutEngine {
 
       adj.get(transition.sourceStateId)!.push(transition.targetStateId);
       adj.get(transition.targetStateId)!.push(transition.sourceStateId); // undirected for components
-    }
-
-    const componentMap = new Map<string, number>();
-    let compIndex = 0;
-    for (const id of stateIds) {
-      if (!componentMap.has(id)) {
-        const q = [id];
-        componentMap.set(id, compIndex);
-        while (q.length > 0) {
-          const curr = q.shift()!;
-          for (const nxt of adj.get(curr)!) {
-            if (!componentMap.has(nxt)) {
-              componentMap.set(nxt, compIndex);
-              q.push(nxt);
-            }
-          }
-        }
-        compIndex++;
-      }
     }
 
     const direction = options.direction === "LR" ? "RIGHT" : "DOWN";
@@ -93,33 +73,8 @@ export class ElkLayoutEngine implements WorkflowLayoutEngine {
       };
     });
 
-    // Get edge classification using shared logic
-    // We need to pass it as WorkflowDefinition-like shape.
-    // The engine receives WorkflowLayoutGraph which doesn't group transitions by state, 
-    // but the classification function needs it. Let's adapt it.
-    
-    const syntheticStates = graph.states.map(s => ({
-       id: s.id,
-       type: s.type,
-       position: { x: 0, y: 0 },
-       entryActions: [],
-       activeActions: [],
-       exitActions: [],
-       transitions: graph.transitions.filter(t => t.sourceStateId === s.id).map(t => ({
-           id: t.id,
-           sourceStateId: t.sourceStateId,
-           targetStateId: t.targetStateId,
-           priority: 0,
-       }))
-    }));
-    
-    const syntheticWorkflow = { states: syntheticStates };
-    // @ts-ignore
-    const computedEdgeKinds = classifyWorkflowEdges(syntheticWorkflow);
-    
-    for (const k in computedEdgeKinds) {
-        edgeKinds[k] = computedEdgeKinds[k] || 'forward';
-    }
+    // Compute edge classifications deterministically
+    const edgeKinds = classifyWorkflowEdges(graph);
 
     const elkEdges = graph.transitions.map(transition => {
       let source = transition.sourceStateId;
@@ -130,11 +85,16 @@ export class ElkLayoutEngine implements WorkflowLayoutEngine {
         source = transition.targetStateId;
         target = transition.sourceStateId;
       }
+
+      const priorityVal = transition.priority !== undefined ? transition.priority : 10;
       
       return {
         id: transition.id,
         sources: [source],
-        targets: [target]
+        targets: [target],
+        layoutOptions: {
+          'elk.priority': String(priorityVal)
+        }
       };
     });
 
@@ -149,7 +109,8 @@ export class ElkLayoutEngine implements WorkflowLayoutEngine {
         'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
         'elk.layered.cycleBreaking.strategy': 'DEPTH_FIRST',
         'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-        'elk.layered.compaction.postCompaction.strategy': 'LEFT_RIGHT'
+        'elk.layered.compaction.postCompaction.strategy': 'LEFT_RIGHT',
+        'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES'
       },
       children: elkNodes,
       edges: elkEdges
