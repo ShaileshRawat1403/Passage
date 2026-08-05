@@ -15,7 +15,42 @@ import { createWorkflowRun, dispatchWorkflowEvent } from "../domain/runtime";
 import { cloneWorkflowSubgraph } from "../domain/clone";
 import { generateDesignerId, resetDesignerIdFactory } from "../domain/idFactory";
 
+
+export type DesignerOperation =
+  | "STATE_ADDED"
+  | "STATE_MOVED"
+  | "STATE_UPDATED"
+  | "STATE_DELETED"
+  | "TRANSITION_ADDED"
+  | "TRANSITION_UPDATED"
+  | "TRANSITION_DELETED"
+  | "ACTION_ADDED"
+  | "ACTION_REMOVED"
+  | "GUARD_UPDATED"
+  | "SUBGRAPH_PASTED"
+  | "AUTO_LAYOUT_APPLIED"
+  | "CANVAS_CLEARED"
+  | "WORKFLOW_UPDATED";
+
+export interface DesignerHistorySnapshot {
+  workflowId: string;
+  workflowDefinition: WorkflowDefinition;
+  selectedStateId: string | null;
+  selectedTransitionId: string | null;
+  selectedStateIds: string[];
+  selectedTransitionIds: string[];
+  operation: DesignerOperation;
+  timestamp: number;
+  groupKey?: string;
+}
+
+export interface WorkflowHistory {
+  past: DesignerHistorySnapshot[];
+  future: DesignerHistorySnapshot[];
+}
+
 export type NavigationTab =
+
   | "workflows"
   | "designer"
   | "runs"
@@ -48,11 +83,15 @@ interface WorkflowStateStore {
   copiedSelection: { states: WorkflowState[]; transitions: TransitionDefinition[] } | null;
 
   // History
-  pastWorkflows: WorkflowDefinition[][];
-  futureWorkflows: WorkflowDefinition[][];
-  lastEditTime: number;
+  historyByWorkflowId: Record<string, WorkflowHistory>;
   undo: () => void;
   redo: () => void;
+  commitDraftOperation: (
+    workflowId: string,
+    operation: DesignerOperation,
+    groupKey: string | undefined,
+    updater: (draft: WorkflowDefinition) => void
+  ) => void;
 
   // Actions
   setActiveTab: (tab: NavigationTab) => void;
@@ -127,36 +166,193 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
   copiedSelection: null,
 
-  pastWorkflows: [],
-  futureWorkflows: [],
-  lastEditTime: 0,
-  undo: () => {
+  historyByWorkflowId: {},
+  commitDraftOperation: (workflowId, operation, groupKey, updater) => {
     set((state) => {
-      if (state.pastWorkflows.length === 0) return state;
-      const prev = state.pastWorkflows[state.pastWorkflows.length - 1];
-      const newPast = state.pastWorkflows.slice(0, -1);
+      const w = state.workflows.find((w) => w.id === workflowId);
+      if (!w) return state;
+
+      const snapshot: DesignerHistorySnapshot = {
+        workflowId: w.id,
+        workflowDefinition: JSON.parse(JSON.stringify(w)),
+        selectedStateId: state.selectedStateId,
+        selectedTransitionId: state.selectedTransitionId,
+        selectedStateIds: state.selectedStateIds,
+        selectedTransitionIds: state.selectedTransitionIds,
+        operation,
+        timestamp: Date.now(),
+        groupKey,
+      };
+
+      const history = state.historyByWorkflowId[workflowId] || { past: [], future: [] };
+      let newPast = [...history.past];
+
+      if (groupKey && newPast.length > 0) {
+        const last = newPast[newPast.length - 1] as DesignerHistorySnapshot;
+        if (
+          last.groupKey === groupKey &&
+          last.operation === operation &&
+          snapshot.timestamp - last.timestamp < 1000
+        ) {
+          // Coalesce edits: do not push a new snapshot, keep the old one as the "before" state
+        } else {
+          newPast.push(snapshot);
+        }
+      } else {
+        newPast.push(snapshot);
+      }
+
+      if (newPast.length > 100) {
+        newPast = newPast.slice(newPast.length - 100);
+      }
+
+      const updated = state.workflows.map((wf) => {
+        if (wf.id === workflowId) {
+          const draft = JSON.parse(JSON.stringify(wf)) as WorkflowDefinition;
+          updater(draft);
+          draft.updatedAt = new Date().toISOString();
+          return draft;
+        }
+        return wf;
+      });
+
+      const active = updated.find((wf) => wf.id === state.activeWorkflowId);
+      const issues = active ? validateWorkflow(active) : [];
+
+      let nextSelStateIds = state.selectedStateIds;
+      let nextSelTrIds = state.selectedTransitionIds;
+      let nextSelStateId = state.selectedStateId;
+      let nextSelTrId = state.selectedTransitionId;
+
+      if (active) {
+        const validStateIds = new Set(active.states.map((s) => s.id));
+        const validTrIds = new Set<string>();
+        for (const s of active.states) {
+          for (const t of s.transitions || []) validTrIds.add(t.id);
+        }
+
+        nextSelStateIds = state.selectedStateIds.filter((id) => validStateIds.has(id));
+        nextSelTrIds = state.selectedTransitionIds.filter((id) => validTrIds.has(id));
+
+        if (nextSelStateId && !validStateIds.has(nextSelStateId)) {
+          nextSelStateId = nextSelStateIds[0] || null;
+        }
+        if (nextSelTrId && !validTrIds.has(nextSelTrId)) {
+          nextSelTrId = nextSelTrIds[0] || null;
+        }
+      }
+
       return {
-        workflows: prev,
-        pastWorkflows: newPast,
-        futureWorkflows: [state.workflows, ...state.futureWorkflows],
-        lastEditTime: 0,
+        workflows: updated,
+        validationIssues: issues,
+        selectedStateIds: nextSelStateIds,
+        selectedTransitionIds: nextSelTrIds,
+        selectedStateId: nextSelStateId,
+        selectedTransitionId: nextSelTrId,
+        historyByWorkflowId: {
+          ...state.historyByWorkflowId,
+          [workflowId]: {
+            past: newPast,
+            future: [],
+          },
+        },
       };
     });
-    get().runValidation(get().activeWorkflowId);
+  },
+
+  undo: () => {
+    set((state) => {
+      const activeId = state.activeWorkflowId;
+      const history = state.historyByWorkflowId[activeId];
+      if (!history || history.past.length === 0) return state;
+
+      const last = history.past[history.past.length - 1] as DesignerHistorySnapshot;
+      const newPast = history.past.slice(0, -1);
+      
+      const currentWf = state.workflows.find(w => w.id === activeId);
+      if (!currentWf) return state;
+
+      const currentSnapshot: DesignerHistorySnapshot = {
+        workflowId: activeId,
+        workflowDefinition: JSON.parse(JSON.stringify(currentWf)),
+        selectedStateId: state.selectedStateId,
+        selectedTransitionId: state.selectedTransitionId,
+        selectedStateIds: state.selectedStateIds,
+        selectedTransitionIds: state.selectedTransitionIds,
+        operation: last.operation,
+        timestamp: Date.now(),
+        groupKey: last.groupKey,
+      };
+
+      const newFuture = [currentSnapshot, ...history.future];
+      
+      const updatedWorkflows = state.workflows.map(w => w.id === activeId ? last.workflowDefinition : w);
+      const active = updatedWorkflows.find(w => w.id === activeId);
+      const issues = active ? validateWorkflow(active) : [];
+
+      return {
+        workflows: updatedWorkflows,
+        selectedStateId: last.selectedStateId,
+        selectedTransitionId: last.selectedTransitionId,
+        selectedStateIds: last.selectedStateIds,
+        selectedTransitionIds: last.selectedTransitionIds,
+        validationIssues: issues,
+        historyByWorkflowId: {
+          ...state.historyByWorkflowId,
+          [activeId]: {
+            past: newPast,
+            future: newFuture,
+          }
+        }
+      };
+    });
   },
   redo: () => {
     set((state) => {
-      if (state.futureWorkflows.length === 0) return state;
-      const next = state.futureWorkflows[0];
-      const newFuture = state.futureWorkflows.slice(1);
+      const activeId = state.activeWorkflowId;
+      const history = state.historyByWorkflowId[activeId];
+      if (!history || history.future.length === 0) return state;
+
+      const next = history.future[0] as DesignerHistorySnapshot;
+      const newFuture = history.future.slice(1);
+      
+      const currentWf = state.workflows.find(w => w.id === activeId);
+      if (!currentWf) return state;
+
+      const currentSnapshot: DesignerHistorySnapshot = {
+        workflowId: activeId,
+        workflowDefinition: JSON.parse(JSON.stringify(currentWf)),
+        selectedStateId: state.selectedStateId,
+        selectedTransitionId: state.selectedTransitionId,
+        selectedStateIds: state.selectedStateIds,
+        selectedTransitionIds: state.selectedTransitionIds,
+        operation: next.operation,
+        timestamp: Date.now(),
+        groupKey: next.groupKey,
+      };
+
+      const newPast = [...history.past, currentSnapshot];
+      
+      const updatedWorkflows = state.workflows.map(w => w.id === activeId ? next.workflowDefinition : w);
+      const active = updatedWorkflows.find(w => w.id === activeId);
+      const issues = active ? validateWorkflow(active) : [];
+
       return {
-        workflows: next,
-        pastWorkflows: [...state.pastWorkflows, state.workflows],
-        futureWorkflows: newFuture,
-        lastEditTime: 0,
+        workflows: updatedWorkflows,
+        selectedStateId: next.selectedStateId,
+        selectedTransitionId: next.selectedTransitionId,
+        selectedStateIds: next.selectedStateIds,
+        selectedTransitionIds: next.selectedTransitionIds,
+        validationIssues: issues,
+        historyByWorkflowId: {
+          ...state.historyByWorkflowId,
+          [activeId]: {
+            past: newPast,
+            future: newFuture,
+          }
+        }
       };
     });
-    get().runValidation(get().activeWorkflowId);
   },
 
   isAdvancedMode: false,
@@ -303,62 +499,65 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   toggleAdvancedMode: () => set((s) => ({ isAdvancedMode: !s.isAdvancedMode })),
 
   createWorkflow: (name, description) => {
-    const newId = generateDesignerId("wf");
+    const newId = generateDesignerId("workflow", get().workflows.map(w => w.id));
     const newWf: WorkflowDefinition = {
       id: newId,
-      name: name || "New Workflow Process",
-      description: description || "Created in Stateflow",
-      version: "1.0.0",
+      name,
+      description,
       status: "draft",
+      version: "1.0.0",
       initialStateId: "start-1",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      defaultContext: { caseId: `CASE-${Date.now().toString().slice(-4)}` },
       states: [
         {
           id: "start-1",
           name: "Start State",
           type: "start",
-          position: { x: 100, y: 200 },
+          position: { x: 250, y: 150 },
           entryActions: [],
           activeActions: [],
           exitActions: [],
           transitions: [
             {
               id: "tr-init",
+              name: "Initialize",
               sourceStateId: "start-1",
               targetStateId: "step-1",
               event: "WORKFLOW_STARTED",
-            },
+              priority: 10,
+            }
           ],
         },
         {
           id: "step-1",
           name: "Process Step",
           type: "atomic",
-          position: { x: 400, y: 200 },
+          position: { x: 250, y: 300 },
           entryActions: [],
           activeActions: [],
           exitActions: [],
           transitions: [
             {
-              id: "tr-complete",
+              id: "tr-finish",
+              name: "Finish",
               sourceStateId: "step-1",
               targetStateId: "end-1",
-              event: "COMPLETED",
-            },
+              event: "STEP_COMPLETED",
+              priority: 10,
+            }
           ],
         },
         {
           id: "end-1",
-          name: "Completed",
+          name: "End State",
           type: "final",
-          position: { x: 700, y: 200 },
+          position: { x: 250, y: 450 },
           entryActions: [],
           activeActions: [],
           exitActions: [],
           transitions: [],
-        },
+        }
       ],
     };
 
@@ -371,9 +570,10 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: validateWorkflow(newWf),
-      pastWorkflows: [...state.pastWorkflows, state.workflows],
-      futureWorkflows: [],
-      lastEditTime: Date.now(),
+      historyByWorkflowId: {
+        ...state.historyByWorkflowId,
+        [newId]: { past: [], future: [] }
+      }
     }));
 
     return newId;
@@ -418,14 +618,6 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         }
       }
 
-      const now = Date.now();
-      let nextPast = [...state.pastWorkflows];
-      if (now - state.lastEditTime >= 1000) {
-        nextPast.push(state.workflows);
-      } else if (nextPast.length === 0) {
-        nextPast.push(state.workflows);
-      }
-
       return {
         workflows: updated,
         validationIssues: issues,
@@ -433,9 +625,6 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         selectedTransitionIds: nextSelTrIds,
         selectedStateId: nextSelStateId,
         selectedTransitionId: nextSelTrId,
-        pastWorkflows: nextPast,
-        futureWorkflows: [],
-        lastEditTime: now,
       };
     });
   },
@@ -453,9 +642,6 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         selectedStateIds: firstState ? [firstState] : [],
         selectedTransitionId: null,
         selectedTransitionIds: [],
-        pastWorkflows: [...state.pastWorkflows, state.workflows],
-        futureWorkflows: [],
-        lastEditTime: Date.now(),
       };
     });
   },
@@ -470,11 +656,8 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
     const parseResult = parseWorkflowDefinition(raw);
     if (!parseResult.success || !parseResult.workflow) {
-      throw new Error(
-        `Workflow import rejected due to contract validation errors:\n${parseResult.errors.join("\n")}`
-      );
+      throw new Error(`Workflow import rejected due to contract validation errors:\n${parseResult.errors.join("\n")}`);
     }
-
     const workflow = parseResult.workflow;
     const firstState = workflow.states[0]?.id || null;
     
@@ -490,16 +673,13 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: parseResult.issues,
-      pastWorkflows: [...state.pastWorkflows, state.workflows],
-      futureWorkflows: [],
-      lastEditTime: Date.now(),
     }));
     return workflow.id;
   },
 
   addState: (workflowId, stateDef) => {
     let finalId = stateDef.id;
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_ADDED", undefined, (draft) => {
       if (!finalId) {
         const occupiedIds = extractAllIds(draft);
         finalId = generateDesignerId("state", occupiedIds);
@@ -515,7 +695,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   updateState: (workflowId, stateId, partial) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_UPDATED", "state-update-" + stateId, (draft) => {
       const idx = draft.states.findIndex((s) => s.id === stateId);
       const existing = draft.states[idx];
       if (idx >= 0 && existing) {
@@ -526,7 +706,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
   duplicateState: (workflowId, stateId) => {
     let dupId: string | null = null;
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "WORKFLOW_UPDATED", undefined, (draft) => {
       const srcState = draft.states.find((s) => s.id === stateId);
       if (!srcState) return;
 
@@ -553,7 +733,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   deleteState: (workflowId, stateId) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_DELETED", undefined, (draft) => {
       draft.states = draft.states.filter((s) => s.id !== stateId);
 
       // Remove incoming and outgoing transitions across all states
@@ -582,7 +762,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   updateStatePosition: (workflowId, stateId, pos) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_MOVED", "state-move-" + stateId, (draft) => {
       const st = draft.states.find((s) => s.id === stateId);
       if (st) st.position = pos;
     });
@@ -599,7 +779,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       priority: transition.priority ?? 10,
     };
 
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "WORKFLOW_UPDATED", undefined, (draft) => {
       const srcState = draft.states.find((s) => s.id === trWithDefaults.sourceStateId);
       const targetState = draft.states.find((s) => s.id === trWithDefaults.targetStateId);
 
@@ -626,7 +806,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   updateTransition: (workflowId, transitionId, partial) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "TRANSITION_UPDATED", "transition-update-" + transitionId, (draft) => {
       let currentTr: TransitionDefinition | undefined;
       let currentSrcId: string | undefined;
 
@@ -691,7 +871,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   deleteTransition: (workflowId, transitionId) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "TRANSITION_DELETED", undefined, (draft) => {
       for (const state of draft.states) {
         state.transitions = (state.transitions || []).filter((t) => t.id !== transitionId);
       }
@@ -749,10 +929,8 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   pasteSelection: (workflowId, offset = { x: 50, y: 50 }) => {
     const clip = get().copiedSelection;
     if (!clip || clip.states.length === 0) return;
-
     let createdStateIds: string[] = [];
-
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "SUBGRAPH_PASTED", undefined, (draft) => {
       const { states: clonedStates } = cloneWorkflowSubgraph(
         clip.states,
         clip.transitions,
@@ -774,7 +952,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   deleteSelection: (workflowId, stateIds, transitionIds) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_DELETED", undefined, (draft) => {
       const stateSet = new Set(stateIds);
       const transitionSet = new Set(transitionIds);
 
@@ -810,7 +988,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   addActionToState: (workflowId, stateId, phase, action) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "ACTION_ADDED", undefined, (draft) => {
       const st = draft.states.find((s) => s.id === stateId);
       if (st) {
         if (phase === "entry") st.entryActions.push(action);
@@ -821,7 +999,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   removeActionFromState: (workflowId, stateId, phase, actionId) => {
-    get().updateWorkflow(workflowId, (draft) => {
+    get().commitDraftOperation(workflowId, "ACTION_REMOVED", undefined, (draft) => {
       const st = draft.states.find((s) => s.id === stateId);
       if (st) {
         if (phase === "entry") st.entryActions = st.entryActions.filter((a) => a.id !== actionId);
@@ -891,10 +1069,8 @@ export function createInitialTestStore() {
     selectedTransitionIds: [],
 
     copiedSelection: null,
-    
-    pastWorkflows: [],
-    futureWorkflows: [],
-    lastEditTime: 0,
+
+  historyByWorkflowId: {},
 
     isAdvancedMode: false,
     validationIssues: validateWorkflow(initialWf),

@@ -30,11 +30,15 @@ export const FloatingCanvasToolbar: React.FC = () => {
     updateWorkflow,
     importWorkflowJson,
     addState,
-    pastWorkflows,
-    futureWorkflows,
+    historyByWorkflowId,
     undo,
     redo,
   } = useWorkflowStore();
+
+    const activeWorkflow = workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
+  const history = activeWorkflow ? historyByWorkflowId[activeWorkflow.id] : undefined;
+  const pastWorkflows = history?.past || [];
+  const futureWorkflows = history?.future || [];
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -43,7 +47,6 @@ export const FloatingCanvasToolbar: React.FC = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const activeWorkflow = workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
 
   if (!activeWorkflow) return null;
 
