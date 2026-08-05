@@ -56,7 +56,7 @@ export const ThemeSelector: React.FC = () => {
                   }}
                   className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between group transition-all cursor-pointer ${
                     isSelected
-                      ? "bg-cyan-500/15 border border-cyan-500/40 text-white shadow-[0_0_12px_rgba(34,211,238,0.15)]"
+                      ? "bg-cyan-500/15 border border-cyan-500/40 text-white shadow-[0_0_12px_rgba(var(--primary-rgb),0.15)]"
                       : "hover:bg-white/5 border border-transparent text-slate-300 hover:text-white"
                   }`}
                 >

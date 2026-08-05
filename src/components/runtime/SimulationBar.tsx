@@ -24,7 +24,7 @@ export const SimulationBar: React.FC = () => {
         <span className="font-mono text-[11px]">No active simulation case running.</span>
         <button
           onClick={() => startNewRun(activeWorkflowId)}
-          className="px-3 py-1 rounded-lg bg-cyan-500 text-slate-950 font-mono font-bold uppercase tracking-wider text-xs shadow-[0_0_12px_rgba(34,211,238,0.3)] cursor-pointer"
+          className="px-3 py-1 rounded-lg bg-cyan-500 text-slate-950 font-mono font-bold uppercase tracking-wider text-xs shadow-[0_0_12px_rgba(var(--primary-rgb),0.3)] cursor-pointer"
         >
           Initialize Case
         </button>
@@ -121,7 +121,7 @@ export const SimulationBar: React.FC = () => {
           />
           <button
             onClick={() => handleEmit(customEvent)}
-            className="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow-[0_0_12px_rgba(34,211,238,0.25)] transition-all cursor-pointer shrink-0"
+            className="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow-[0_0_12px_rgba(var(--primary-rgb),0.25)] transition-all cursor-pointer shrink-0"
           >
             <Send className="w-3 h-3" />
             <span>Emit</span>

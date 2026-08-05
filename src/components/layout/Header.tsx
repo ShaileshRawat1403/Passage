@@ -80,12 +80,12 @@ export const Header: React.FC = () => {
           )}
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.25)] shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary-rgb),0.25)] shrink-0">
               <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             </div>
             <div className="hidden md:flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
-                <span className="font-black tracking-[0.2em] text-sm text-white font-mono uppercase drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
+                <span className="font-black tracking-[0.2em] text-sm text-white font-mono uppercase drop-shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]">
                   PASSAGE
                 </span>
               </div>
@@ -129,7 +129,7 @@ export const Header: React.FC = () => {
                 onClick={() => setActiveTab(tab.id as NavigationTab)}
                 className={`px-2.5 sm:px-3 py-1 rounded-lg font-mono text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
                   isActive
-                    ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-[0_0_12px_rgba(34,211,238,0.2)]"
+                    ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-[0_0_12px_rgba(var(--primary-rgb),0.2)]"
                     : "text-slate-400 hover:text-slate-100"
                 }`}
               >
@@ -206,7 +206,7 @@ export const Header: React.FC = () => {
                 setActiveTab("runs");
               }
             }}
-            className="px-3 sm:px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all cursor-pointer"
+            className="px-3 sm:px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] transition-all cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-slate-950" />
             <span className="hidden sm:inline">Simulate Case</span>

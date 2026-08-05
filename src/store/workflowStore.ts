@@ -47,6 +47,13 @@ interface WorkflowStateStore {
   // Clipboard
   copiedSelection: { states: WorkflowState[]; transitions: TransitionDefinition[] } | null;
 
+  // History
+  pastWorkflows: WorkflowDefinition[][];
+  futureWorkflows: WorkflowDefinition[][];
+  lastEditTime: number;
+  undo: () => void;
+  redo: () => void;
+
   // Actions
   setActiveTab: (tab: NavigationTab) => void;
   setActiveWorkflowId: (id: string) => void;
@@ -119,6 +126,38 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   selectedTransitionIds: [],
 
   copiedSelection: null,
+
+  pastWorkflows: [],
+  futureWorkflows: [],
+  lastEditTime: 0,
+  undo: () => {
+    set((state) => {
+      if (state.pastWorkflows.length === 0) return state;
+      const prev = state.pastWorkflows[state.pastWorkflows.length - 1];
+      const newPast = state.pastWorkflows.slice(0, -1);
+      return {
+        workflows: prev,
+        pastWorkflows: newPast,
+        futureWorkflows: [state.workflows, ...state.futureWorkflows],
+        lastEditTime: 0,
+      };
+    });
+    get().runValidation(get().activeWorkflowId);
+  },
+  redo: () => {
+    set((state) => {
+      if (state.futureWorkflows.length === 0) return state;
+      const next = state.futureWorkflows[0];
+      const newFuture = state.futureWorkflows.slice(1);
+      return {
+        workflows: next,
+        pastWorkflows: [...state.pastWorkflows, state.workflows],
+        futureWorkflows: newFuture,
+        lastEditTime: 0,
+      };
+    });
+    get().runValidation(get().activeWorkflowId);
+  },
 
   isAdvancedMode: false,
   validationIssues: validateWorkflow(vendorInvoiceWorkflow),
@@ -332,6 +371,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: validateWorkflow(newWf),
+      pastWorkflows: [...state.pastWorkflows, state.workflows],
+      futureWorkflows: [],
+      lastEditTime: Date.now(),
     }));
 
     return newId;
@@ -376,6 +418,14 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         }
       }
 
+      const now = Date.now();
+      let nextPast = [...state.pastWorkflows];
+      if (now - state.lastEditTime >= 1000) {
+        nextPast.push(state.workflows);
+      } else if (nextPast.length === 0) {
+        nextPast.push(state.workflows);
+      }
+
       return {
         workflows: updated,
         validationIssues: issues,
@@ -383,6 +433,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         selectedTransitionIds: nextSelTrIds,
         selectedStateId: nextSelStateId,
         selectedTransitionId: nextSelTrId,
+        pastWorkflows: nextPast,
+        futureWorkflows: [],
+        lastEditTime: now,
       };
     });
   },
@@ -400,6 +453,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         selectedStateIds: firstState ? [firstState] : [],
         selectedTransitionId: null,
         selectedTransitionIds: [],
+        pastWorkflows: [...state.pastWorkflows, state.workflows],
+        futureWorkflows: [],
+        lastEditTime: Date.now(),
       };
     });
   },
@@ -434,6 +490,9 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: parseResult.issues,
+      pastWorkflows: [...state.pastWorkflows, state.workflows],
+      futureWorkflows: [],
+      lastEditTime: Date.now(),
     }));
     return workflow.id;
   },
@@ -832,6 +891,10 @@ export function createInitialTestStore() {
     selectedTransitionIds: [],
 
     copiedSelection: null,
+    
+    pastWorkflows: [],
+    futureWorkflows: [],
+    lastEditTime: 0,
 
     isAdvancedMode: false,
     validationIssues: validateWorkflow(initialWf),

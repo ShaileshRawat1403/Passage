@@ -32,7 +32,7 @@ export const DashboardView: React.FC = () => {
 
         <button
           onClick={() => setActiveTab("designer")}
-          className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all text-xs cursor-pointer shrink-0"
+          className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] transition-all text-xs cursor-pointer shrink-0"
         >
           <Play className="w-4 h-4 fill-slate-950" />
           <span>Open Designer</span>

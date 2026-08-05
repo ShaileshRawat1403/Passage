@@ -106,7 +106,7 @@ export const StateInspector: React.FC = () => {
           <div className="w-0.5 h-10 rounded-full bg-white/20 group-hover:bg-cyan-400 group-hover:shadow-[0_0_8px_#22d3ee] transition-all" />
         </div>
 
-        <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.15)]">
+        <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_20px_rgba(var(--primary-rgb),0.15)]">
           <Layers className="w-6 h-6" />
         </div>
         <p className="font-bold text-sm text-slate-100 tracking-wider font-mono uppercase">State Inspector</p>

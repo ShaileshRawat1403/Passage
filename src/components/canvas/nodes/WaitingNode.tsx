@@ -12,7 +12,7 @@ export const WaitingNode: React.FC<NodeProps> = (props) => {
     <div
       className={`relative w-[260px] rounded-xl bg-slate-950/80 backdrop-blur-xl border-2 transition-all shadow-2xl p-4 ${
         selected
-          ? "border-cyan-400 ring-4 ring-cyan-500/20 shadow-[0_0_20px_rgba(34,211,238,0.25)]"
+          ? "border-cyan-400 ring-4 ring-cyan-500/20 shadow-[0_0_20px_rgba(var(--primary-rgb),0.25)]"
           : "border-white/10 hover:border-cyan-500/50"
       }`}
     >

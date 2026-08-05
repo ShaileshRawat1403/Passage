@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useReactFlow } from "@xyflow/react";
 import {
   Save,
@@ -15,6 +15,8 @@ import {
   X,
   Sparkles,
   FileCode,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
 import { StateType } from "../../types/workflow";
@@ -28,6 +30,10 @@ export const FloatingCanvasToolbar: React.FC = () => {
     updateWorkflow,
     importWorkflowJson,
     addState,
+    pastWorkflows,
+    futureWorkflows,
+    undo,
+    redo,
   } = useWorkflowStore();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -45,6 +51,25 @@ export const FloatingCanvasToolbar: React.FC = () => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          if (futureWorkflows.length > 0) redo();
+        } else {
+          e.preventDefault();
+          if (pastWorkflows.length > 0) undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (futureWorkflows.length > 0) redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pastWorkflows.length, futureWorkflows.length, undo, redo]);
 
   // 1. Save Handler
   const handleSave = () => {
@@ -206,17 +231,37 @@ export const FloatingCanvasToolbar: React.FC = () => {
     <>
       {/* Toast Feedback Notification */}
       {toastMessage && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-mono text-xs font-bold shadow-[0_0_20px_rgba(34,211,238,0.4)] animate-in fade-in slide-in-from-top duration-200">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-mono text-xs font-bold shadow-[0_0_20px_rgba(var(--primary-rgb),0.4)] animate-in fade-in slide-in-from-top duration-200">
           {toastMessage}
         </div>
       )}
 
       {/* Floating Canvas Action Toolbar */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-950/80 backdrop-blur-xl border border-white/15 shadow-2xl">
+        {/* Undo / Redo */}
+        <button
+          onClick={undo}
+          disabled={pastWorkflows.length === 0}
+          className="px-2 py-1.5 rounded-xl hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-mono font-bold flex items-center transition-all cursor-pointer"
+          title="Undo"
+        >
+          <Undo2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={redo}
+          disabled={futureWorkflows.length === 0}
+          className="px-2 py-1.5 rounded-xl hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-mono font-bold flex items-center transition-all cursor-pointer"
+          title="Redo"
+        >
+          <Redo2 className="w-4 h-4" />
+        </button>
+
+        <div className="h-4 w-px bg-white/10 mx-0.5" />
+
         {/* Save */}
         <button
           onClick={handleSave}
-          className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_0_12px_rgba(34,211,238,0.15)]"
+          className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_0_12px_rgba(var(--primary-rgb),0.15)]"
           title="Save state machine configuration"
         >
           <Save className="w-3.5 h-3.5" />
@@ -393,7 +438,7 @@ export const FloatingCanvasToolbar: React.FC = () => {
               </button>
               <button
                 onClick={handleDownloadJson}
-                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(34,211,238,0.3)] cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)] cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 <span>Download .json</span>
@@ -465,7 +510,7 @@ export const FloatingCanvasToolbar: React.FC = () => {
               <button
                 onClick={handleImportSubmit}
                 disabled={!importJsonText.trim()}
-                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(34,211,238,0.3)] cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)] cursor-pointer"
               >
                 <Upload className="w-4 h-4" />
                 <span>Import & Open</span>

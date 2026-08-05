@@ -44,7 +44,7 @@ export const CustomEdge: React.FC<EdgeProps> = ({
         style={{
           strokeWidth: selected ? 3 : 2,
           stroke: selected ? "#22d3ee" : "rgba(255, 255, 255, 0.25)",
-          filter: selected ? "drop-shadow(0 0 8px rgba(34,211,238,0.6))" : "none",
+          filter: selected ? "drop-shadow(0 0 8px rgba(var(--primary-rgb),0.6))" : "none",
           ...style,
         }}
       />
@@ -62,7 +62,7 @@ export const CustomEdge: React.FC<EdgeProps> = ({
           <div
             className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono border backdrop-blur-xl shadow-lg flex items-center gap-1 whitespace-nowrap ${
               selected
-                ? "bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.4)]"
+                ? "bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-[0_0_12px_rgba(var(--primary-rgb),0.4)]"
                 : "bg-slate-950/90 text-cyan-400 border-white/15 hover:border-cyan-500/50"
             }`}
           >
