@@ -57,6 +57,9 @@ export const FloatingCanvasToolbar: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditable = target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable);
+      if (isEditable) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           e.preventDefault();
@@ -86,12 +89,17 @@ export const FloatingCanvasToolbar: React.FC = () => {
   const handleClearCanvas = () => {
     if (
       window.confirm(
-        `Are you sure you want to clear all states from "${activeWorkflow.name}"? This action cannot be undone.`
+        `Are you sure you want to clear all states from "${activeWorkflow.name}"?`
       )
     ) {
-      updateWorkflow(activeWorkflow.id, (draft) => {
-        draft.states = [];
-      });
+      useWorkflowStore.getState().commitDraftOperation(
+        activeWorkflow.id,
+        "CANVAS_CLEARED",
+        undefined,
+        (draft) => {
+          draft.states = [];
+        }
+      );
       showToast("Canvas cleared.");
     }
   };
@@ -185,20 +193,25 @@ export const FloatingCanvasToolbar: React.FC = () => {
     }
 
     // Apply X and Y coordinates
-    updateWorkflow(activeWorkflow.id, (draft) => {
-      Object.entries(columns).forEach(([colStr, colStates]) => {
-        const colIdx = Number(colStr);
-        colStates.forEach((st, rowIdx) => {
-          const draftState = draft.states.find((s) => s.id === st.id);
-          if (draftState) {
-            draftState.position = {
-              x: 80 + colIdx * 320,
-              y: 120 + rowIdx * 180,
-            };
-          }
+    useWorkflowStore.getState().commitDraftOperation(
+      activeWorkflow.id,
+      "AUTO_LAYOUT_APPLIED",
+      undefined,
+      (draft) => {
+        Object.entries(columns).forEach(([colStr, colStates]) => {
+          const colIdx = Number(colStr);
+          colStates.forEach((st, rowIdx) => {
+            const draftState = draft.states.find((s) => s.id === st.id);
+            if (draftState) {
+              draftState.position = {
+                x: 80 + colIdx * 320,
+                y: 120 + rowIdx * 180,
+              };
+            }
+          });
         });
-      });
-    });
+      }
+    );
 
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
     showToast("Auto-layout applied!");

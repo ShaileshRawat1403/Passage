@@ -172,6 +172,16 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       const w = state.workflows.find((w) => w.id === workflowId);
       if (!w) return state;
 
+      const draft = JSON.parse(JSON.stringify(w)) as WorkflowDefinition;
+      updater(draft);
+
+      // No-op check (skip history if definition did not change structurally)
+      if (JSON.stringify(w) === JSON.stringify(draft)) {
+        return state;
+      }
+
+      draft.updatedAt = new Date().toISOString();
+
       const snapshot: DesignerHistorySnapshot = {
         workflowId: w.id,
         workflowDefinition: JSON.parse(JSON.stringify(w)),
@@ -207,12 +217,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       }
 
       const updated = state.workflows.map((wf) => {
-        if (wf.id === workflowId) {
-          const draft = JSON.parse(JSON.stringify(wf)) as WorkflowDefinition;
-          updater(draft);
-          draft.updatedAt = new Date().toISOString();
-          return draft;
-        }
+        if (wf.id === workflowId) return draft;
         return wf;
       });
 
@@ -635,6 +640,10 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       const nextActive = next[0]?.id || "";
       const activeWf = next.find((w) => w.id === nextActive);
       const firstState = activeWf?.states[0]?.id || null;
+      
+      const nextHistory = { ...state.historyByWorkflowId };
+      delete nextHistory[id];
+
       return {
         workflows: next,
         activeWorkflowId: nextActive,
@@ -642,6 +651,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         selectedStateIds: firstState ? [firstState] : [],
         selectedTransitionId: null,
         selectedTransitionIds: [],
+        historyByWorkflowId: nextHistory,
       };
     });
   },
@@ -673,6 +683,10 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       selectedTransitionIds: [],
       activeTab: "designer",
       validationIssues: parseResult.issues,
+      historyByWorkflowId: {
+        ...state.historyByWorkflowId,
+        [workflow.id]: { past: [], future: [] },
+      },
     }));
     return workflow.id;
   },
@@ -695,7 +709,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   updateState: (workflowId, stateId, partial) => {
-    get().commitDraftOperation(workflowId, "STATE_UPDATED", "state-update-" + stateId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_UPDATED", `state:${stateId}:update:${Object.keys(partial).sort().join("-")}`, (draft) => {
       const idx = draft.states.findIndex((s) => s.id === stateId);
       const existing = draft.states[idx];
       if (idx >= 0 && existing) {
@@ -706,7 +720,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
   duplicateState: (workflowId, stateId) => {
     let dupId: string | null = null;
-    get().commitDraftOperation(workflowId, "WORKFLOW_UPDATED", undefined, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_ADDED", undefined, (draft) => {
       const srcState = draft.states.find((s) => s.id === stateId);
       if (!srcState) return;
 
@@ -762,7 +776,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   updateStatePosition: (workflowId, stateId, pos) => {
-    get().commitDraftOperation(workflowId, "STATE_MOVED", "state-move-" + stateId, (draft) => {
+    get().commitDraftOperation(workflowId, "STATE_MOVED", `state:${stateId}:move`, (draft) => {
       const st = draft.states.find((s) => s.id === stateId);
       if (st) st.position = pos;
     });
@@ -779,7 +793,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       priority: transition.priority ?? 10,
     };
 
-    get().commitDraftOperation(workflowId, "WORKFLOW_UPDATED", undefined, (draft) => {
+    get().commitDraftOperation(workflowId, "TRANSITION_ADDED", undefined, (draft) => {
       const srcState = draft.states.find((s) => s.id === trWithDefaults.sourceStateId);
       const targetState = draft.states.find((s) => s.id === trWithDefaults.targetStateId);
 
@@ -806,7 +820,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   updateTransition: (workflowId, transitionId, partial) => {
-    get().commitDraftOperation(workflowId, "TRANSITION_UPDATED", "transition-update-" + transitionId, (draft) => {
+    get().commitDraftOperation(workflowId, "TRANSITION_UPDATED", `transition:${transitionId}:update:${Object.keys(partial).sort().join("-")}`, (draft) => {
       let currentTr: TransitionDefinition | undefined;
       let currentSrcId: string | undefined;
 
