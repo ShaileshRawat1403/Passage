@@ -103,6 +103,7 @@ export function seedInitialActivityLogs(
 
   // 3. Runs activity logs
   runs.forEach((run) => {
+    const wf = workflows.find((w) => w.id === run.workflowId);
     logs.push(
       createActivityEntry(
         "run_event",
@@ -110,7 +111,7 @@ export function seedInitialActivityLogs(
         `Started simulation run ${run.id} on state '${run.currentStateId}'.`,
         {
           workflowId: run.workflowId,
-          workflowName: run.workflowName,
+          workflowName: wf ? wf.name : undefined,
           severity: run.status === "completed" ? "success" : run.status === "failed" ? "error" : "info",
           timestamp: run.startedAt || new Date(baseTime - 1800000).toISOString(),
         }

@@ -127,7 +127,10 @@ interface WorkflowStateStore {
   importWorkflowJson: (jsonText: string) => string;
 
   // State & Transition Mutations (P1.1 Domain Operations)
-  addState: (workflowId: string, state: Omit<WorkflowState, "id"> & { id?: string }) => void;
+  addState: (
+    workflowId: string,
+    state: Partial<WorkflowState> & { name: string; type: WorkflowState["type"] }
+  ) => void;
   updateState: (workflowId: string, stateId: string, partial: Partial<WorkflowState>) => void;
   duplicateState: (workflowId: string, stateId: string) => void;
   deleteState: (workflowId: string, stateId: string) => void;
@@ -770,14 +773,16 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         const occupiedIds = extractAllIds(draft);
         finalId = generateDesignerId("state", occupiedIds);
       }
-      draft.states.push({
-        entryActions: [],
-        activeActions: [],
-        exitActions: [],
-        transitions: [],
+      const newState: WorkflowState = {
+        position: stateDef.position || { x: 100, y: 100 },
+        entryActions: stateDef.entryActions || [],
+        activeActions: stateDef.activeActions || [],
+        exitActions: stateDef.exitActions || [],
+        transitions: stateDef.transitions || [],
         ...stateDef,
         id: finalId,
-      } as WorkflowState);
+      };
+      draft.states.push(newState);
     });
     set({
       selectedStateId: finalId,
