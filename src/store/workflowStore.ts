@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { computeWorkflowLayout, WorkflowLayoutOptions } from "../lib/layout/index";
+import { computeWorkflowLayout, WorkflowLayoutOptions, WorkflowLayoutWarning } from "../lib/layout/index";
 
 import {
   WorkflowDefinition,
@@ -45,6 +45,11 @@ export interface DesignerHistorySnapshot {
   timestamp: number;
   groupKey?: string;
 }
+
+export type ApplyLayoutResult =
+  | { status: "applied"; warnings: never[] }
+  | { status: "unchanged"; warnings: never[] }
+  | { status: "blocked"; warnings: WorkflowLayoutWarning[] };
 
 export interface WorkflowHistory {
   past: DesignerHistorySnapshot[];
@@ -131,7 +136,7 @@ interface WorkflowStateStore {
   pasteSelection: (workflowId: string, offset?: { x: number; y: number }) => void;
   deleteSelection: (workflowId: string, stateIds: string[], transitionIds: string[]) => void;
 
-  applyWorkflowLayout: (workflowId: string, options: WorkflowLayoutOptions) => Promise<void>;
+  applyWorkflowLayout: (workflowId: string, options: WorkflowLayoutOptions) => Promise<ApplyLayoutResult>;
 
 
   addActionToState: (
@@ -1008,14 +1013,25 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
   applyWorkflowLayout: async (workflowId, options) => {
     const wf = get().workflows.find((w) => w.id === workflowId);
-    if (!wf) return;
+    if (!wf) return { status: "blocked", warnings: [] };
     const result = await computeWorkflowLayout(wf, options);
     
-    // Only commit if there are no errors (we treat all warnings from our strict checks as blockers)
     if (result.warnings.length > 0) {
       console.warn("Layout blocked due to warnings:", result.warnings);
-      // We could set these warnings into the store, but for now we just block
-      return;
+      return { status: "blocked", warnings: result.warnings };
+    }
+    
+    let hasChanges = false;
+    for (const st of wf.states) {
+      const newPos = result.positions[st.id];
+      if (newPos && (st.position?.x !== newPos.x || st.position?.y !== newPos.y)) {
+        hasChanges = true;
+        break;
+      }
+    }
+
+    if (!hasChanges) {
+      return { status: "unchanged", warnings: [] };
     }
     
     get().commitDraftOperation(workflowId, "AUTO_LAYOUT_APPLIED", undefined, (draft) => {
@@ -1026,6 +1042,8 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         }
       }
     });
+    
+    return { status: "applied", warnings: [] };
   },
 
   addActionToState: (workflowId, stateId, phase, action) => {

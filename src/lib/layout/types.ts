@@ -32,9 +32,9 @@ export interface WorkflowLayoutWarning {
 }
 
 export interface WorkflowLayoutGraph {
-  states: any[];
+  states: { id: string; type: string }[];
   initialStateId?: string;
-  transitions: any[];
+  transitions: { id: string; sourceStateId: string; targetStateId: string }[];
 }
 
 export interface WorkflowLayoutEngine {

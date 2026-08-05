@@ -162,7 +162,7 @@ export const FloatingCanvasToolbar: React.FC = () => {
 
     setIsLayingOut(true);
     try {
-      await useWorkflowStore.getState().applyWorkflowLayout(activeWorkflow.id, {
+      const res = await useWorkflowStore.getState().applyWorkflowLayout(activeWorkflow.id, {
         direction,
         nodeSpacing: 50,
         rankSpacing: 80,
@@ -170,11 +170,17 @@ export const FloatingCanvasToolbar: React.FC = () => {
         finalStateAlignment: true,
       });
 
-      setTimeout(() => {
-        fitView({ padding: 0.2, duration: 800 });
-      }, 50);
+      if (res.status === "blocked") {
+        showToast(`Layout blocked: ${res.warnings[0]?.message || "Unknown error"}`);
+      } else if (res.status === "applied") {
+        showToast("Auto-layout applied!");
+        setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50);
+      } else {
+        showToast("Layout unchanged.");
+      }
     } catch (err) {
       console.error("Layout failed", err);
+      showToast("Layout engine error");
     } finally {
       setIsLayingOut(false);
     }

@@ -1,3 +1,4 @@
+import { classifyWorkflowEdges } from "../../lib/layout/classification";
 import React, { useCallback, useMemo } from "react";
 import {
   ReactFlow,
@@ -83,6 +84,7 @@ const WorkflowCanvasInner: React.FC = () => {
     if (!activeWorkflow) return [];
     const selSet = new Set(selectedTransitionIds.length > 0 ? selectedTransitionIds : (selectedTransitionId ? [selectedTransitionId] : []));
     const edgesList: Edge[] = [];
+    const edgeKinds = classifyWorkflowEdges(activeWorkflow);
     for (const st of activeWorkflow.states) {
       for (const tr of st.transitions || []) {
         edgesList.push({
@@ -95,6 +97,7 @@ const WorkflowCanvasInner: React.FC = () => {
             event: tr.event,
             guardName: tr.guard?.name,
             priority: tr.priority,
+            kind: edgeKinds[tr.id] || "forward",
           },
         });
       }
