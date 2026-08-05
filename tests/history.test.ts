@@ -23,7 +23,7 @@ describe("Workflow Designer History", () => {
     let state = useWorkflowStore.getState();
     let history = state.historyByWorkflowId[initialWfId];
     expect(history!.past.length).toBe(1);
-    expect(history!.past[0].operation).toBe("STATE_ADDED");
+    expect(history!.past[0]!.operation).toBe("STATE_ADDED");
     
     const addedStateWf = state.workflows.find((w) => w.id === initialWfId);
     expect(addedStateWf?.states.length).toBeGreaterThan(0);
@@ -34,7 +34,7 @@ describe("Workflow Designer History", () => {
     
     expect(history!.past.length).toBe(0);
     expect(history!.future.length).toBe(1);
-    expect(history!.future[0].operation).toBe("STATE_ADDED");
+    expect(history!.future[0]!.operation).toBe("STATE_ADDED");
     
     const undoneWf = state.workflows.find((w) => w.id === initialWfId);
     expect(undoneWf?.states.length).toBe(3);
@@ -73,12 +73,12 @@ describe("Workflow Designer History", () => {
     useWorkflowStore.getState().undo();
     
     let state = useWorkflowStore.getState();
-    expect(state.historyByWorkflowId[initialWfId].future.length).toBe(1);
+    expect(state.historyByWorkflowId[initialWfId]!.future.length).toBe(1);
 
     useWorkflowStore.getState().addState(initialWfId, { id: "s2", name: "S2", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] as any[] });
     state = useWorkflowStore.getState();
     
-    expect(state.historyByWorkflowId[initialWfId].future.length).toBe(0);
+    expect(state.historyByWorkflowId[initialWfId]!.future.length).toBe(0);
   });
 
   it("should keep workflow histories isolated", () => {
@@ -92,8 +92,8 @@ describe("Workflow Designer History", () => {
     useWorkflowStore.getState().addState(wf2Id, { id: "s2", name: "WF2 State", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] as any[] });
     
     const state = useWorkflowStore.getState();
-    expect(state.historyByWorkflowId[wf1].past.length).toBe(1);
-    expect(state.historyByWorkflowId[wf2Id].past.length).toBe(1);
+    expect(state.historyByWorkflowId[wf1]!.past.length).toBe(1);
+    expect(state.historyByWorkflowId[wf2Id]!.past.length).toBe(1);
   });
 
   it("should not create history on no-op", () => {
@@ -107,7 +107,7 @@ describe("Workflow Designer History", () => {
     
     let state = useWorkflowStore.getState();
     const history = state.historyByWorkflowId[wfId];
-    expect(history.past.length).toBe(0);
+    expect(history!.past.length).toBe(0);
   });
 
   it("should group field-specific changes within 1 second", () => {
@@ -121,12 +121,12 @@ describe("Workflow Designer History", () => {
     
     let state = useWorkflowStore.getState();
     let history = state.historyByWorkflowId[wfId];
-    expect(history.past.length).toBe(1); // grouped
+    expect(history!.past.length).toBe(1); // grouped
 
     useWorkflowStore.getState().updateState(wfId, "s1", { description: "Desc 1" });
     state = useWorkflowStore.getState();
     history = state.historyByWorkflowId[wfId];
-    expect(history.past.length).toBe(2);
+    expect(history!.past.length).toBe(2);
   });
 
   it("should make clear canvas undoable", () => {
@@ -169,7 +169,7 @@ describe("Workflow Designer History", () => {
     }
     const state = useWorkflowStore.getState();
     const history = state.historyByWorkflowId[wfId];
-    expect(history.past.length).toBe(100);
+    expect(history!.past.length).toBe(100);
   });
 
   it("should not invoke undo on native text field edits", () => {
@@ -205,16 +205,16 @@ describe("Workflow Designer History", () => {
     useWorkflowStore.getState().addState(wfId, { id: "s1", name: "S1", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] as any[] });
     
     useWorkflowStore.getState().commitDraftOperation(wfId, "AUTO_LAYOUT_APPLIED", undefined, (draft) => {
-      draft.states.forEach(s => s.position.x += 100);
+      draft.states.forEach(s => s.position!.x += 100);
     });
     
     let state = useWorkflowStore.getState();
     const history = state.historyByWorkflowId[wfId];
-    expect(history.past.length).toBe(2); 
+    expect(history!.past.length).toBe(2); 
     
     useWorkflowStore.getState().undo();
     state = useWorkflowStore.getState();
-    expect(state.historyByWorkflowId[wfId].past.length).toBe(1);
+    expect(state.historyByWorkflowId[wfId]!.past.length).toBe(1);
   });
 
   it("should make node dragging create one snapshot", () => {
@@ -223,7 +223,7 @@ describe("Workflow Designer History", () => {
     
     useWorkflowStore.getState().updateStatePosition(wfId, "s1", { x: 10, y: 10 });
     let state = useWorkflowStore.getState();
-    expect(state.historyByWorkflowId[wfId].past.length).toBe(2);
+    expect(state.historyByWorkflowId[wfId]!.past.length).toBe(2);
   });
 
   it("should restore connected transitions on state deletion undo", () => {
@@ -244,6 +244,6 @@ describe("Workflow Designer History", () => {
     const s1 = state.workflows.find(w => w.id === wfId)!.states.find(s => s.id === "s1");
     expect(s1).toBeDefined();
     expect(s1!.transitions!.length).toBe(1);
-    expect(s1!.transitions![0].id).toBe("t1");
+    expect(s1!.transitions![0]!.id).toBe("t1");
   });
 });
