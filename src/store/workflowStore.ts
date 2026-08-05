@@ -64,7 +64,7 @@ interface WorkflowStateStore {
   importWorkflowJson: (jsonText: string) => string;
 
   // State & Transition Mutations (P1.1 Domain Operations)
-  addState: (workflowId: string, state: WorkflowState) => void;
+  addState: (workflowId: string, state: Omit<WorkflowState, "id"> & { id?: string }) => void;
   updateState: (workflowId: string, stateId: string, partial: Partial<WorkflowState>) => void;
   duplicateState: (workflowId: string, stateId: string) => void;
   deleteState: (workflowId: string, stateId: string) => void;
@@ -421,6 +421,10 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
     const workflow = parseResult.workflow;
     const firstState = workflow.states[0]?.id || null;
+    
+    // Ensure the imported workflow's IDs are added to occupied space by doing nothing strictly here 
+    // but extractAllIds will pick them up later when operations are run.
+
     set((state) => ({
       workflows: [workflow, ...state.workflows],
       activeWorkflowId: workflow.id,
@@ -434,13 +438,18 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     return workflow.id;
   },
 
-  addState: (workflowId, newState) => {
+  addState: (workflowId, stateDef) => {
+    let finalId = stateDef.id;
     get().updateWorkflow(workflowId, (draft) => {
-      draft.states.push(newState);
+      if (!finalId) {
+        const occupiedIds = extractAllIds(draft);
+        finalId = generateDesignerId("state", occupiedIds);
+      }
+      draft.states.push({ ...stateDef, id: finalId } as WorkflowState);
     });
     set({
-      selectedStateId: newState.id,
-      selectedStateIds: [newState.id],
+      selectedStateId: finalId,
+      selectedStateIds: finalId ? [finalId] : [],
       selectedTransitionId: null,
       selectedTransitionIds: [],
     });
@@ -465,7 +474,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       const { states: clonedStates } = cloneWorkflowSubgraph(
         [srcState],
         srcState.transitions || [],
-        { offset: { x: 40, y: 40 } }
+        { offset: { x: 40, y: 40 }, occupiedIds: extractAllIds(draft) }
       );
       const dupState = clonedStates[0];
       if (dupState) {
@@ -521,9 +530,12 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   },
 
   addTransition: (workflowId, transition) => {
+    const currentWf = get().workflows.find((w) => w.id === workflowId);
+    const occupiedIds = currentWf ? extractAllIds(currentWf) : [];
+
     const trWithDefaults: TransitionDefinition = {
       ...transition,
-      id: transition.id || generateDesignerId("tr"),
+      id: transition.id || generateDesignerId("tr", occupiedIds),
       event: transition.event || "EVENT_REQUIRED",
       priority: transition.priority ?? 10,
     };
@@ -540,8 +552,8 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       srcState.transitions = [...(srcState.transitions || []), trWithDefaults];
     });
 
-    const currentWf = get().workflows.find((w) => w.id === workflowId);
-    const exists = currentWf?.states.some((s) =>
+    const currentWfAfter = get().workflows.find((w) => w.id === workflowId);
+    const exists = currentWfAfter?.states.some((s) =>
       (s.transitions || []).some((t) => t.id === trWithDefaults.id)
     );
     if (exists) {
@@ -685,7 +697,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       const { states: clonedStates } = cloneWorkflowSubgraph(
         clip.states,
         clip.transitions,
-        { offset }
+        { offset, occupiedIds: extractAllIds(draft) }
       );
 
       draft.states.push(...clonedStates);
@@ -860,4 +872,26 @@ export function createInitialTestStore() {
 export function resetWorkflowStore() {
   resetDesignerIdFactory();
   useWorkflowStore.setState(createInitialTestStore());
+}
+
+export function extractAllIds(workflow: WorkflowDefinition): string[] {
+  const ids = new Set<string>([workflow.id]);
+  for (const st of workflow.states) {
+    ids.add(st.id);
+    for (const t of st.transitions || []) {
+      ids.add(t.id);
+      for (const a of t.actions || []) {
+        if (a.id) ids.add(a.id);
+      }
+    }
+    const actions = [
+      ...(st.entryActions || []),
+      ...(st.activeActions || []),
+      ...(st.exitActions || []),
+    ];
+    for (const a of actions) {
+      if (a.id) ids.add(a.id);
+    }
+  }
+  return Array.from(ids);
 }

@@ -3,7 +3,8 @@ import { generateDesignerId } from "./idFactory";
 
 export interface CloneSubgraphOptions {
   offset?: { x: number; y: number };
-  idGenerator?: (prefix: string) => string;
+  idGenerator?: (prefix: string, occupiedIds?: Set<string> | string[]) => string;
+  occupiedIds?: string[] | Set<string>;
 }
 
 /**
@@ -23,33 +24,42 @@ export function cloneWorkflowSubgraph(
 ): { states: WorkflowState[]; transitions: TransitionDefinition[] } {
   const offset = options.offset ?? { x: 40, y: 40 };
   const genId = options.idGenerator ?? generateDesignerId;
+  const occupiedIds = options.occupiedIds ?? [];
 
   const stateIdMap = new Map<string, string>();
   const actionIdMap = new Map<string, string>();
   const transitionIdMap = new Map<string, string>();
 
+  // Use a mutable Set for occupied IDs so we don't collide within the clone itself
+  const occupiedSet = new Set(occupiedIds);
+  const getNextId = (prefix: string) => {
+    const id = genId(prefix, occupiedSet);
+    occupiedSet.add(id);
+    return id;
+  };
+
   // Pass 1: Build ID maps for all states, actions, and transitions in the clone set
   for (const st of statesToClone) {
-    stateIdMap.set(st.id, genId("st"));
+    stateIdMap.set(st.id, getNextId("st"));
     const allStateActions = [
       ...(st.entryActions || []),
       ...(st.activeActions || []),
       ...(st.exitActions || []),
     ];
     for (const act of allStateActions) {
-      if (act.id) actionIdMap.set(act.id, genId("act"));
+      if (act.id) actionIdMap.set(act.id, getNextId("act"));
     }
   }
 
   for (const tr of transitionsToClone) {
-    transitionIdMap.set(tr.id, genId("tr"));
+    transitionIdMap.set(tr.id, getNextId("tr"));
     for (const act of tr.actions || []) {
-      if (act.id) actionIdMap.set(act.id, genId("act"));
+      if (act.id) actionIdMap.set(act.id, getNextId("act"));
     }
   }
 
   const remapAction = (action: ActionDefinition): ActionDefinition => {
-    const newId = actionIdMap.get(action.id) || genId("act");
+    const newId = actionIdMap.get(action.id) || getNextId("act");
     const newCompId = action.compensationActionId
       ? actionIdMap.get(action.compensationActionId) || action.compensationActionId
       : undefined;

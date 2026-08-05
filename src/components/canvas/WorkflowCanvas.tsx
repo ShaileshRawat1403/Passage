@@ -227,7 +227,7 @@ const WorkflowCanvasInner: React.FC = () => {
     (connection: Connection) => {
       if (!activeWorkflow || !connection.source || !connection.target) return;
       const newTransition: TransitionDefinition = {
-        id: `tr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: "", // store will generate this securely
         name: "New Route",
         sourceStateId: connection.source,
         targetStateId: connection.target,

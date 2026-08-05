@@ -10,11 +10,31 @@ export function setDesignerIdFactory(factory: ((prefix: string) => string) | nul
   customFactory = factory;
 }
 
-export function generateDesignerId(prefix: string): string {
+export function generateDesignerId(prefix: string, occupiedIds?: Set<string> | string[]): string {
+  const occupiedSet = occupiedIds
+    ? Array.isArray(occupiedIds)
+      ? new Set(occupiedIds)
+      : occupiedIds
+    : null;
+
   if (customFactory) {
-    return customFactory(prefix);
+    let candidate = customFactory(prefix);
+    if (occupiedSet) {
+      let suffix = 1;
+      while (occupiedSet.has(candidate)) {
+        candidate = `${customFactory(prefix)}-${suffix++}`;
+      }
+    }
+    return candidate;
   }
-  const next = (counterMap[prefix] || 0) + 1;
-  counterMap[prefix] = next;
-  return `${prefix}-${next}`;
+
+  let candidate: string;
+  do {
+    const next = (counterMap[prefix] || 0) + 1;
+    counterMap[prefix] = next;
+    candidate = `${prefix}-${next}`;
+  } while (occupiedSet && occupiedSet.has(candidate));
+
+  return candidate;
 }
+

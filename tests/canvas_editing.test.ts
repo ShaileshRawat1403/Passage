@@ -359,10 +359,13 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
       ],
     };
 
+    let sequence = 0;
+    const testId = (prefix: string) => `${prefix}-test-${++sequence}`;
+
     const { states: clonedStates, transitions: clonedTransitions } = cloneWorkflowSubgraph(
       [stateWithParallel],
       [transitionWithAction],
-      { idGenerator: (prefix) => `${prefix}-clone-${Math.floor(Math.random() * 1000)}` }
+      { idGenerator: testId }
     );
 
     expect(clonedStates.length).toBe(1);
