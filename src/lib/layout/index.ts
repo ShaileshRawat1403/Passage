@@ -1,9 +1,11 @@
 import { WorkflowDefinition } from "../../types/workflow";
 import { ElkLayoutEngine } from "./elkEngine";
 import { WorkflowLayoutEngine, WorkflowLayoutOptions, WorkflowLayoutResult } from "./types";
+import { validateWorkflowLayoutResult } from "./validation";
 
 export * from "./types";
 export * from "./dimensions";
+export * from "./validation";
 export { ElkLayoutEngine };
 
 export async function computeWorkflowLayout(
@@ -38,5 +40,6 @@ export async function computeWorkflowLayout(
     transitions,
   };
 
-  return engine.layout(graph, options);
+  const rawResult = await engine.layout(graph, options);
+  return validateWorkflowLayoutResult(graph, rawResult);
 }

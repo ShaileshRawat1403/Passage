@@ -1,7 +1,7 @@
 import { WorkflowDefinition } from "../../types/workflow";
 import { WorkflowLayoutGraph } from "./types";
 
-export type EdgeKind = "forward" | "branch" | "loopback" | "self_loop" | "cross_component";
+export type EdgeKind = "forward" | "branch" | "loopback" | "self_loop";
 
 export type ClassifiableWorkflow = 
   | WorkflowDefinition
@@ -115,8 +115,6 @@ export function classifyWorkflowEdges(workflow: ClassifiableWorkflow): Record<st
     let kind: EdgeKind = "forward";
     if (transition.sourceStateId === transition.targetStateId) {
       kind = "self_loop";
-    } else if (componentMap.get(transition.sourceStateId) !== componentMap.get(transition.targetStateId)) {
-      kind = "cross_component";
     } else if (loopbackEdges.has(transition.id)) {
       kind = "loopback";
     } else if ((outDegree.get(transition.sourceStateId) || 0) > 1) {

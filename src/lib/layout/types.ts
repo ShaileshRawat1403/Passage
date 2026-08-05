@@ -19,7 +19,7 @@ export interface WorkflowLayoutResult {
   positions: Record<string, LayoutPoint>;
   edgeKinds: Record<
     string,
-    "forward" | "branch" | "loopback" | "self_loop" | "cross_component"
+    "forward" | "branch" | "loopback" | "self_loop"
   >;
   warnings: WorkflowLayoutWarning[];
 }

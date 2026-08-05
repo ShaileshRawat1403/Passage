@@ -3,6 +3,7 @@ import { computeWorkflowLayout, WorkflowLayoutOptions, WorkflowLayoutEngine } fr
 import { WorkflowDefinition } from "../src/types/workflow";
 import { useWorkflowStore, resetWorkflowStore } from "../src/store/workflowStore";
 import { classifyWorkflowEdges } from "../src/lib/layout/classification";
+import { STATE_LAYOUT_DIMENSIONS } from "../src/lib/layout/dimensions";
 
 describe("Workflow Layout Engine (P1.3)", () => {
   const defaultOptions: WorkflowLayoutOptions = {
@@ -68,26 +69,37 @@ describe("Workflow Layout Engine (P1.3)", () => {
     const wf = createTestWorkflow();
     wf.states = [
       { id: "s1", name: "Start", type: "start", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
-      { id: "dec", name: "Decision", type: "decision", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
-      { id: "branchHigh", name: "High Priority", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
-      { id: "branchLow", name: "Low Priority", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
+      { id: "par", name: "Parallel Hub", type: "parallel", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
+      { id: "bHigh", name: "High Prio Branch", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
+      { id: "bMed", name: "Med Prio Branch", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
+      { id: "bLow", name: "Low Prio Branch", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
       { id: "join", name: "Join", type: "final", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
     ];
-    addTransition(wf, "s1", "dec");
-    addTransition(wf, "dec", "branchHigh", 100);
-    addTransition(wf, "dec", "branchLow", 1);
-    addTransition(wf, "branchHigh", "join");
-    addTransition(wf, "branchLow", "join");
+    addTransition(wf, "s1", "par");
+    addTransition(wf, "par", "bHigh", 100, "t-par-bHigh");
+    addTransition(wf, "par", "bMed", 50, "t-par-bMed");
+    addTransition(wf, "par", "bLow", 1, "t-par-bLow");
+    addTransition(wf, "bHigh", "join");
+    addTransition(wf, "bMed", "join");
+    addTransition(wf, "bLow", "join");
 
     const res = await computeWorkflowLayout(wf, defaultOptions);
-    expect(res.positions["dec"]!.x).toBeGreaterThan(res.positions["s1"]!.x);
-    expect(res.positions["branchHigh"]!.x).toBeGreaterThan(res.positions["dec"]!.x);
-    expect(res.positions["branchLow"]!.x).toBeGreaterThan(res.positions["dec"]!.x);
-    expect(res.positions["join"]!.x).toBeGreaterThan(res.positions["branchHigh"]!.x);
+    expect(res.positions["par"]!.x).toBeGreaterThan(res.positions["s1"]!.x);
 
+    // 1. Measurable parallel grouping invariant (all parallel branches share same rank on main axis X)
+    expect(res.positions["bHigh"]!.x).toEqual(res.positions["bMed"]!.x);
+    expect(res.positions["bMed"]!.x).toEqual(res.positions["bLow"]!.x);
+    expect(res.positions["join"]!.x).toBeGreaterThan(res.positions["bHigh"]!.x);
+
+    // 2. Deterministic priority order along secondary axis Y (higher priority placed above lower priority)
+    expect(res.positions["bHigh"]!.y).toBeLessThan(res.positions["bMed"]!.y);
+    expect(res.positions["bMed"]!.y).toBeLessThan(res.positions["bLow"]!.y);
+
+    // 3. Edge classification
     const kinds = classifyWorkflowEdges(wf);
-    expect(kinds["t-dec-branchHigh"]).toBe("branch");
-    expect(kinds["t-dec-branchLow"]).toBe("branch");
+    expect(kinds["t-par-bHigh"]).toBe("branch");
+    expect(kinds["t-par-bMed"]).toBe("branch");
+    expect(kinds["t-par-bLow"]).toBe("branch");
   });
 
   it("edge classification determinism and self-loop / loopback detection", async () => {
@@ -122,38 +134,82 @@ describe("Workflow Layout Engine (P1.3)", () => {
     expect(res1.edgeKinds).toEqual(res2.edgeKinds);
   });
 
-  it("node-overlap prevention on generated coordinates", async () => {
+  it("node-overlap prevention on generated coordinates using bounding rectangles", async () => {
     const wf = createTestWorkflow();
     addTransition(wf, "s1", "s2");
     addTransition(wf, "s1", "s3");
     const res = await computeWorkflowLayout(wf, defaultOptions);
 
-    const posList = Object.values(res.positions);
-    for (let i = 0; i < posList.length; i++) {
-      for (let j = i + 1; j < posList.length; j++) {
-        const p1 = posList[i]!;
-        const p2 = posList[j]!;
-        const samePos = p1.x === p2.x && p1.y === p2.y;
-        expect(samePos).toBe(false);
+    const states = wf.states;
+    for (let i = 0; i < states.length; i++) {
+      for (let j = i + 1; j < states.length; j++) {
+        const s1 = states[i]!;
+        const s2 = states[j]!;
+        const p1 = res.positions[s1.id]!;
+        const p2 = res.positions[s2.id]!;
+        const dim1 = STATE_LAYOUT_DIMENSIONS[s1.type as keyof typeof STATE_LAYOUT_DIMENSIONS] || { width: 200, height: 80 };
+        const dim2 = STATE_LAYOUT_DIMENSIONS[s2.type as keyof typeof STATE_LAYOUT_DIMENSIONS] || { width: 200, height: 80 };
+
+        const noOverlap =
+          p1.x + dim1.width <= p2.x ||
+          p2.x + dim2.width <= p1.x ||
+          p1.y + dim1.height <= p2.y ||
+          p2.y + dim2.height <= p1.y;
+
+        expect(noOverlap).toBe(true);
       }
     }
   });
 
-  it("disconnected-component non-overlap and isolated-state stability", async () => {
+  it("disconnected-component bounding box non-overlap and isolated-state stability", async () => {
     const wf = createTestWorkflow();
+    addTransition(wf, "s1", "s2");
+    addTransition(wf, "s2", "s3"); // s1, s2, s3 form Component 1
+
     wf.states.push(
       { id: "s4", name: "S4", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
       { id: "s5", name: "S5", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] },
       { id: "iso", name: "Isolated", type: "atomic", position: { x: 0, y: 0 }, entryActions: [], activeActions: [], exitActions: [], transitions: [] }
     );
-    addTransition(wf, "s1", "s2");
-    addTransition(wf, "s4", "s5");
+    addTransition(wf, "s4", "s5"); // s4, s5 form Component 2
 
     const res = await computeWorkflowLayout(wf, defaultOptions);
     expect(res.positions["iso"]).toBeDefined();
     expect(res.positions["s4"]).toBeDefined();
     expect(res.positions["s5"]).toBeDefined();
     expect(res.warnings).toHaveLength(0);
+
+    // Compute component bounding boxes
+    const getComponentBBox = (ids: string[]) => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const id of ids) {
+        const p = res.positions[id]!;
+        const st = wf.states.find(s => s.id === id)!;
+        const dim = STATE_LAYOUT_DIMENSIONS[st.type as keyof typeof STATE_LAYOUT_DIMENSIONS] || { width: 200, height: 80 };
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x + dim.width);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y + dim.height);
+      }
+      return { minX, maxX, minY, maxY };
+    };
+
+    const bbox1 = getComponentBBox(["s1", "s2", "s3"]);
+    const bbox2 = getComponentBBox(["s4", "s5"]);
+    const bboxIso = getComponentBBox(["iso"]);
+
+    const checkNoOverlap = (b1: ReturnType<typeof getComponentBBox>, b2: ReturnType<typeof getComponentBBox>) => {
+      return (
+        b1.maxX <= b2.minX ||
+        b2.maxX <= b1.minX ||
+        b1.maxY <= b2.minY ||
+        b2.maxY <= b1.minY
+      );
+    };
+
+    expect(checkNoOverlap(bbox1, bbox2)).toBe(true);
+    expect(checkNoOverlap(bbox1, bboxIso)).toBe(true);
+    expect(checkNoOverlap(bbox2, bboxIso)).toBe(true);
   });
 
   it("semantic isolation: layout preserves all state properties except position and updatedAt", async () => {
@@ -237,16 +293,16 @@ describe("Workflow Layout Engine (P1.3)", () => {
     expect(result.warnings.some(w => w.code === "DUPLICATE_STATE_ID")).toBe(true);
   });
 
-  it("invalid injected engine coordinates (NaN/Infinity) or missing/unknown IDs", async () => {
+  it("invalid injected engine coordinates (NaN/Infinity) or missing/unknown IDs independently caught by validator", async () => {
     const wf = createTestWorkflow();
 
-    // Fake engine returning NaN coordinates
+    // Fake engine returning NaN coordinates with empty warnings array
     const nanEngine: WorkflowLayoutEngine = {
       async layout() {
         return {
-          positions: { s1: { x: NaN, y: 100 } },
+          positions: { s1: { x: NaN, y: 100 }, s2: { x: 100, y: 100 }, s3: { x: 200, y: 100 } },
           edgeKinds: {},
-          warnings: [{ code: "INVALID_COORDINATES", message: "Invalid coordinates" }],
+          warnings: [], // empty warnings array! Passage must independently detect
         };
       }
     };
@@ -254,13 +310,13 @@ describe("Workflow Layout Engine (P1.3)", () => {
     const resNaN = await computeWorkflowLayout(wf, defaultOptions, nanEngine);
     expect(resNaN.warnings.some(w => w.code === "INVALID_COORDINATES")).toBe(true);
 
-    // Fake engine returning unknown state ID
+    // Fake engine returning unknown state ID with empty warnings array
     const unknownEngine: WorkflowLayoutEngine = {
       async layout() {
         return {
-          positions: { s1: { x: 0, y: 0 }, unknownState: { x: 10, y: 10 } },
+          positions: { s1: { x: 0, y: 0 }, s2: { x: 10, y: 10 }, s3: { x: 20, y: 20 }, unknownState: { x: 10, y: 10 } },
           edgeKinds: {},
-          warnings: [{ code: "UNKNOWN_STATE_ID", message: "Unknown state ID" }],
+          warnings: [], // empty warnings array!
         };
       }
     };
@@ -268,13 +324,13 @@ describe("Workflow Layout Engine (P1.3)", () => {
     const resUnknown = await computeWorkflowLayout(wf, defaultOptions, unknownEngine);
     expect(resUnknown.warnings.some(w => w.code === "UNKNOWN_STATE_ID")).toBe(true);
 
-    // Fake engine returning missing state result
+    // Fake engine returning missing state result with empty warnings array
     const missingEngine: WorkflowLayoutEngine = {
       async layout() {
         return {
-          positions: { s1: { x: 0, y: 0 } },
+          positions: { s1: { x: 0, y: 0 } }, // s2, s3 missing
           edgeKinds: {},
-          warnings: [{ code: "MISSING_RESULT", message: "Missing result for states" }],
+          warnings: [], // empty warnings array!
         };
       }
     };

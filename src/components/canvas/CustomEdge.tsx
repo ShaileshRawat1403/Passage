@@ -6,7 +6,7 @@ export interface CustomEdgeData {
   guardName?: string;
   priority?: number;
   label?: string;
-  kind?: "forward" | "branch" | "loopback" | "self_loop" | "cross_component";
+  kind?: "forward" | "branch" | "loopback" | "self_loop";
 }
 
 export const CustomEdge: React.FC<EdgeProps> = ({
@@ -61,11 +61,6 @@ export const CustomEdge: React.FC<EdgeProps> = ({
         strokeDash = "4 2";
         strokeWidth = 2;
         break;
-      case "cross_component":
-        strokeColor = "#38bdf8"; // sky blue
-        strokeDash = "5 5";
-        strokeWidth = 2;
-        break;
       case "forward":
       default:
         strokeColor = "rgba(255, 255, 255, 0.35)";
@@ -108,8 +103,6 @@ export const CustomEdge: React.FC<EdgeProps> = ({
                 ? "bg-slate-950/95 text-purple-300 border-purple-500/50 hover:border-purple-400"
                 : kind === "self_loop"
                 ? "bg-slate-950/95 text-rose-400 border-rose-500/50 hover:border-rose-400"
-                : kind === "cross_component"
-                ? "bg-slate-950/95 text-sky-400 border-sky-500/50 hover:border-sky-400"
                 : "bg-slate-950/90 text-cyan-400 border-white/15 hover:border-cyan-500/50"
             }`}
           >
@@ -126,11 +119,6 @@ export const CustomEdge: React.FC<EdgeProps> = ({
             {kind === "self_loop" && (
               <span className="px-1 py-0.2 text-[8px] font-bold tracking-wider uppercase rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
                 SELF LOOP
-              </span>
-            )}
-            {kind === "cross_component" && (
-              <span className="px-1 py-0.2 text-[8px] font-bold tracking-wider uppercase rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                CROSS
               </span>
             )}
             {kind === "forward" && <span className="opacity-60 text-[9px] uppercase">WHEN</span>}
