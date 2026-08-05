@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { WorkflowDefinition } from "../src/types/workflow";
-import { WorkflowRun } from "../src/domain/runtime";
+import { WorkflowDefinition, WorkflowRun } from "../src/types/workflow";
 import { deriveWorkspaceOverview, sortWorkflowsRecent, toOverviewItem } from "../src/domain/workspaceOverview";
 
 const sampleWf1: WorkflowDefinition = {
@@ -256,6 +255,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
   it("13. Waiting runs create waiting attention items", () => {
     const runWaiting: WorkflowRun = {
       id: "RUN-WAIT-1",
+      caseId: "CASE-WAIT-1",
       workflowId: "wf-1",
       workflowVersion: "1.0.0",
       status: "waiting",
@@ -286,6 +286,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
   it("14. Failed runs create failure attention items", () => {
     const runFailed: WorkflowRun = {
       id: "RUN-FAIL-1",
+      caseId: "CASE-FAIL-1",
       workflowId: "wf-1",
       workflowVersion: "1.0.0",
       status: "failed",
@@ -316,6 +317,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
   it("15. Attention ordering is deterministic", () => {
     const runFailed: WorkflowRun = {
       id: "RUN-FAIL-1",
+      caseId: "CASE-FAIL-1",
       workflowId: "wf-1",
       workflowVersion: "1.0.0",
       status: "failed",
@@ -333,6 +335,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
 
     const runWaiting: WorkflowRun = {
       id: "RUN-WAIT-1",
+      caseId: "CASE-WAIT-1",
       workflowId: "wf-1",
       workflowVersion: "1.0.0",
       status: "waiting",
@@ -367,6 +370,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
   it("16. Counts are correctly derived", () => {
     const runWaiting: WorkflowRun = {
       id: "RUN-WAIT-1",
+      caseId: "CASE-WAIT-1",
       workflowId: "wf-1",
       workflowVersion: "1.0.0",
       status: "waiting",
@@ -404,6 +408,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
   it("18. Derivation does not alter active runs or audit trails", () => {
     const run: WorkflowRun = {
       id: "RUN-TEST",
+      caseId: "CASE-TEST",
       workflowId: "wf-1",
       workflowVersion: "1.0.0",
       status: "active",

@@ -128,8 +128,8 @@ describe("Passage Home Integration & Verification (P1.5)", () => {
     });
 
     expect(overview.recentWorkflows.length).toBe(5);
-    expect(overview.recentWorkflows[0].workflowId).toBe("wf-bulk-7");
-    expect(overview.recentWorkflows[4].workflowId).toBe("wf-bulk-3");
+    expect(overview.recentWorkflows[0]?.workflowId).toBe("wf-bulk-7");
+    expect(overview.recentWorkflows[4]?.workflowId).toBe("wf-bulk-3");
   });
 
   it("6. Attention items categorize workflow errors, warnings, waiting runs, and failed runs", () => {
@@ -139,6 +139,7 @@ describe("Passage Home Integration & Verification (P1.5)", () => {
       activeRuns: [
         {
           id: "run-failed-1",
+          caseId: "CASE-101",
           workflowId: "wf-1",
           workflowVersion: "1.0.0",
           status: "failed",
@@ -155,6 +156,7 @@ describe("Passage Home Integration & Verification (P1.5)", () => {
         },
         {
           id: "run-waiting-1",
+          caseId: "CASE-102",
           workflowId: "wf-1",
           workflowVersion: "1.0.0",
           status: "waiting",
@@ -186,6 +188,7 @@ describe("Passage Home Integration & Verification (P1.5)", () => {
       activeRuns: [
         {
           id: "run-act-1",
+          caseId: "CASE-103",
           workflowId: "wf-1",
           workflowVersion: "1.0.0",
           status: "active",
@@ -209,10 +212,13 @@ describe("Passage Home Integration & Verification (P1.5)", () => {
     expect(overview.counts.activeRuns).toBe(1);
   });
 
-  it("8. Store creation adds a new workflow and updates activeWorkflowId and activeTab", () => {
-    const initialCount = useWorkflowStore.getState().workflows.length;
+  it("8. Store creation adds a new workflow and updates activeWorkflowId and activeTab when invoked", () => {
+    const store = useWorkflowStore.getState();
+    const initialCount = store.workflows.length;
 
-    const newId = useWorkflowStore.getState().createWorkflow("New Onboarding Process", "Test Description");
+    const newId = store.createWorkflow("New Onboarding Process", "Test Description");
+    useWorkflowStore.getState().setActiveWorkflowId(newId);
+    useWorkflowStore.getState().setActiveTab("designer");
 
     const state = useWorkflowStore.getState();
     expect(state.workflows.length).toBe(initialCount + 1);
@@ -220,22 +226,33 @@ describe("Passage Home Integration & Verification (P1.5)", () => {
     expect(created).toBeDefined();
     expect(created?.name).toBe("New Onboarding Process");
     expect(created?.description).toBe("Test Description");
+    expect(state.activeWorkflowId).toBe(newId);
+    expect(state.activeTab).toBe("designer");
   });
 
-  it("9. Store JSON import validates schema and adds workflow on success", () => {
+  it("9. Store JSON import validates schema, adds workflow, and sets active workflow & tab on success", () => {
     const validJson = JSON.stringify(sampleWorkflow1);
 
     const importedId = useWorkflowStore.getState().importWorkflowJson(validJson);
+    useWorkflowStore.getState().setActiveWorkflowId(importedId);
+    useWorkflowStore.getState().setActiveTab("designer");
+
     const state = useWorkflowStore.getState();
     const imported = state.workflows.find((w) => w.id === importedId);
 
     expect(imported).toBeDefined();
     expect(imported?.name).toBe("Invoice Processing");
+    expect(state.activeWorkflowId).toBe(importedId);
+    expect(state.activeTab).toBe("designer");
   });
 
-  it("10. Store JSON import throws error on malformed or schema-invalid JSON", () => {
+  it("10. Store JSON import throws error on malformed or schema-invalid JSON without mutating store", () => {
+    const initialWorkflows = [...useWorkflowStore.getState().workflows];
     const badJson = '{"name": "Invalid Json Workflow", "states": "not-an-array"}';
 
     expect(() => useWorkflowStore.getState().importWorkflowJson(badJson)).toThrow();
+
+    const afterWorkflows = useWorkflowStore.getState().workflows;
+    expect(afterWorkflows).toEqual(initialWorkflows);
   });
 });

@@ -90,7 +90,7 @@ export const Header: React.FC = () => {
           {/* Passage Brand Logo */}
           <button
             onClick={() => setActiveTab("home")}
-            className="flex items-center gap-2 shrink-0 cursor-pointer group text-left outline-none"
+            className="flex items-center gap-2 shrink-0 cursor-pointer group text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             title="Return to Passage Home"
           >
             <div className="w-8 h-8 sm:w-9 sm:h-9 border border-cyan-400/40 rounded-xl bg-cyan-500/10 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary-rgb),0.25)] group-hover:border-cyan-400 transition-colors shrink-0">

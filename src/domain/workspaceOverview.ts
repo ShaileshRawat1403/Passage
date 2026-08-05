@@ -1,6 +1,5 @@
-import { WorkflowDefinition } from "../types/workflow";
-import { WorkflowRun } from "./runtime";
-import { getWorkflowReadiness, WorkflowReadiness } from "./readiness";
+import { WorkflowDefinition, WorkflowRun, WorkflowReadiness } from "../types/workflow";
+import { getWorkflowReadiness } from "./readiness";
 import { validateWorkflow } from "./validation";
 
 export interface WorkspaceOverviewInput {
@@ -117,9 +116,9 @@ export function deriveWorkspaceOverview(
   // 3. Continue workflow determination
   let continueWfDef: WorkflowDefinition | null = null;
   if (activeWorkflowId && workflows.some((w) => w.id === activeWorkflowId)) {
-    continueWfDef = workflows.find((w) => w.id === activeWorkflowId) || null;
+    continueWfDef = workflows.find((w) => w.id === activeWorkflowId) ?? null;
   } else if (sortedWorkflows.length > 0) {
-    continueWfDef = sortedWorkflows[0];
+    continueWfDef = sortedWorkflows[0] ?? null;
   }
 
   const continueWorkflow = continueWfDef ? itemsMap.get(continueWfDef.id) || null : null;
@@ -130,8 +129,11 @@ export function deriveWorkspaceOverview(
   // 5. Attention items
   const attentionItems: WorkspaceAttentionItem[] = [];
 
+  // Stable workflow sorting by ID ascending for deterministic attention ordering
+  const workflowsById = [...workflows].sort((a, b) => a.id.localeCompare(b.id));
+
   // 5a. Workflow errors
-  for (const wf of sortedWorkflows) {
+  for (const wf of workflowsById) {
     const item = itemsMap.get(wf.id)!;
     if (item.errorCount > 0) {
       attentionItems.push({
@@ -151,13 +153,16 @@ export function deriveWorkspaceOverview(
   const sortedRuns = [...activeRuns].sort((a, b) => a.id.localeCompare(b.id));
   for (const run of sortedRuns) {
     if (run.status === "failed") {
+      const hasActionError = run.failedActionCount && run.failedActionCount > 0;
       attentionItems.push({
         id: `att-run-fail-${run.id}`,
         kind: "failed_run",
         workflowId: run.workflowId,
         runId: run.id,
         title: `Case ${run.id}`,
-        description: `Execution failed during state transition.`,
+        description: hasActionError
+          ? `Execution failed due to action execution error.`
+          : `Execution is in a failed state.`,
         severity: "error",
       });
     }
@@ -166,20 +171,23 @@ export function deriveWorkspaceOverview(
   // 5c. Waiting runs
   for (const run of sortedRuns) {
     if (run.status === "waiting") {
+      const isPendingApproval = (run as any).pendingApproval || false;
       attentionItems.push({
         id: `att-run-wait-${run.id}`,
         kind: "waiting_run",
         workflowId: run.workflowId,
         runId: run.id,
         title: `Case ${run.id}`,
-        description: `Waiting for human approval or SLA input.`,
+        description: isPendingApproval
+          ? `Waiting for human approval.`
+          : `Execution is waiting for input.`,
         severity: "warning",
       });
     }
   }
 
   // 5d. Workflow warnings (when no errors)
-  for (const wf of sortedWorkflows) {
+  for (const wf of workflowsById) {
     const item = itemsMap.get(wf.id)!;
     if (item.errorCount === 0 && item.warningCount > 0) {
       attentionItems.push({
