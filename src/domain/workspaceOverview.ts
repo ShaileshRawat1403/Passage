@@ -171,7 +171,7 @@ export function deriveWorkspaceOverview(
   // 5c. Waiting runs
   for (const run of sortedRuns) {
     if (run.status === "waiting") {
-      const isPendingApproval = (run as any).pendingApproval || false;
+      const isPendingApproval = Boolean(run.pendingApproval);
       attentionItems.push({
         id: `att-run-wait-${run.id}`,
         kind: "waiting_run",

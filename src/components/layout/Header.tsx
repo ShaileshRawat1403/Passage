@@ -198,14 +198,16 @@ export const Header: React.FC = () => {
             );
           })()}
 
-          {/* AI Workflow Creator */}
-          <button
-            onClick={() => setIsAiModalOpen(true)}
-            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Describe (AI)</span>
-          </button>
+          {/* AI Workflow Creator - Hidden on Home */}
+          {activeTab !== "home" && (
+            <button
+              onClick={() => setIsAiModalOpen(true)}
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Describe (AI)</span>
+            </button>
+          )}
 
           {/* Run / Simulate - Hidden on Home */}
           {activeTab !== "home" && (

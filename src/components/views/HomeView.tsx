@@ -78,7 +78,7 @@ export const HomeView: React.FC = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6 sm:space-y-8 text-xs font-sans">
       {/* A. Header Area */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
+      <div className="border-b border-white/10 pb-6">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold font-mono text-slate-100 tracking-wider uppercase">
             Passage Home
@@ -86,31 +86,6 @@ export const HomeView: React.FC = () => {
           <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
             Continue your workflows, resolve structural issues, and start new process definitions.
           </p>
-        </div>
-
-        {/* Quick Actions Header Cluster */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold font-mono text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Workflow</span>
-          </button>
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-mono font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-          >
-            <Upload className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Import</span>
-          </button>
-          <button
-            onClick={() => setShowAiModal(true)}
-            className="px-3.5 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Describe (AI)</span>
-          </button>
         </div>
       </div>
 
@@ -149,7 +124,7 @@ export const HomeView: React.FC = () => {
               className="px-4 py-2.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono font-bold text-xs flex items-center gap-2 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
               <Sparkles className="w-4 h-4 text-indigo-400" />
-              <span>Describe with AI</span>
+              <span>Describe Workflow with AI</span>
             </button>
           </div>
         </div>

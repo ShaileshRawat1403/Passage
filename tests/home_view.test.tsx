@@ -101,14 +101,24 @@ describe("HomeView & Header Component Integration (P1.5)", () => {
 
     const homeTabBtn = screen.getByRole("button", { name: /Home/i });
     expect(homeTabBtn).not.toBeNull();
+
+    // Verify 'Home' is the first tab in navigation order
+    const navButtons = screen.getAllByRole("button").filter((btn) =>
+      ["Home", "Designer", "Runs", "Cases", "Audit Trail"].some((label) =>
+        btn.textContent?.includes(label)
+      )
+    );
+    expect(navButtons.length).toBeGreaterThan(0);
+    expect(navButtons[0]?.textContent).toContain("Home");
   });
 
-  it("2. Contextual controls (workflow select, Simulate Case) are hidden on Home tab, but brand click returns Home", () => {
+  it("2. Contextual controls (workflow select, Simulate Case, Describe AI) are hidden on Home tab, but brand click returns Home", () => {
     render(<Header />);
 
-    // Workflow dropdown and Simulate Case button should be hidden on Home
+    // Workflow dropdown, Simulate Case, and Header Describe (AI) button should be hidden on Home
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByText(/Simulate Case/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Describe \(AI\)/i })).toBeNull();
 
     // Switch to designer
     act(() => {
@@ -117,9 +127,10 @@ describe("HomeView & Header Component Integration (P1.5)", () => {
     cleanup();
     render(<Header />);
 
-    // Now contextual controls should be visible
+    // Now contextual controls and Describe (AI) should be visible in Header
     expect(screen.getByRole("combobox")).not.toBeNull();
     expect(screen.getByText(/Simulate Case/i)).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Describe \(AI\)/i })).not.toBeNull();
 
     // Clicking brand logo returns to Home
     const brandBtn = screen.getByTitle("Return to Passage Home");
@@ -140,6 +151,11 @@ describe("HomeView & Header Component Integration (P1.5)", () => {
     // Onboarding card should be visible
     expect(screen.getByText("Build your first Passage workflow.")).not.toBeNull();
 
+    // Deduplicated single action surface for empty onboarding
+    expect(screen.getAllByRole("button", { name: /Create Workflow/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Import Definition/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Describe Workflow with AI/i })).toHaveLength(1);
+
     // Sections that MUST be suppressed when empty:
     expect(screen.queryByText("Needs Attention")).toBeNull();
     expect(screen.queryByText("Quick Start")).toBeNull();
@@ -155,6 +171,11 @@ describe("HomeView & Header Component Integration (P1.5)", () => {
     expect(screen.getByRole("heading", { name: "Needs Attention" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Quick Start" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Recent Workflows" })).not.toBeNull();
+
+    // Deduplicated single action surface in Quick Start panel
+    expect(screen.getAllByRole("button", { name: /Create Workflow/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Import Definition/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Describe Workflow with AI/i })).toHaveLength(1);
 
     // Check recent workflow issue counts
     expect(screen.getAllByText("0 issues").length).toBeGreaterThan(0);
