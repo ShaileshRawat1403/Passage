@@ -9,6 +9,7 @@ import {
   ValidationIssue,
   ConnectionCredential,
   ActionDefinition,
+  WorkspaceActivity,
 } from "../types/workflow";
 import { sampleWorkflows, vendorInvoiceWorkflow } from "../domain/sampleWorkflows";
 import { validateWorkflow } from "../domain/validation";
@@ -16,6 +17,7 @@ import { parseWorkflowDefinition } from "../domain/parser";
 import { createWorkflowRun, dispatchWorkflowEvent } from "../domain/runtime";
 import { cloneWorkflowSubgraph } from "../domain/clone";
 import { generateDesignerId, resetDesignerIdFactory } from "../domain/idFactory";
+import { createActivityEntry, seedInitialActivityLogs } from "../domain/activity";
 
 
 export type DesignerOperation =
@@ -61,6 +63,7 @@ export type NavigationTab =
   | "designer"
   | "runs"
   | "workflows"
+  | "activity"
   | "connections"
   | "components"
   | "settings";
@@ -85,6 +88,13 @@ interface WorkflowStateStore {
 
   // Saved Connections
   connections: ConnectionCredential[];
+
+  // Workspace Activity & Audit Log
+  activityLogs: WorkspaceActivity[];
+  addActivityLog: (
+    entry: Omit<WorkspaceActivity, "id" | "timestamp"> & { id?: string; timestamp?: string }
+  ) => void;
+  clearActivityLogs: () => void;
 
   // Clipboard
   copiedSelection: { states: WorkflowState[]; transitions: TransitionDefinition[] } | null;
@@ -257,8 +267,22 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         }
       }
 
+      const opFormatted = operation.replace(/_/g, " ").toLowerCase();
+      const editActivity = createActivityEntry(
+        "designer_edit",
+        `Designer Edit: ${operation.replace(/_/g, " ")}`,
+        `Updated state diagram (${opFormatted}) for '${w.name}'.`,
+        {
+          workflowId: w.id,
+          workflowName: w.name,
+          severity: "info",
+          metadata: { operation },
+        }
+      );
+
       return {
         workflows: updated,
+        activityLogs: [editActivity, ...(state.activityLogs || [])],
         validationIssues: issues,
         selectedStateIds: nextSelStateIds,
         selectedTransitionIds: nextSelTrIds,
@@ -403,6 +427,20 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       lastTestedAt: new Date().toISOString(),
     },
   ],
+
+  activityLogs: seedInitialActivityLogs(sampleWorkflows, [createWorkflowRun(vendorInvoiceWorkflow)]),
+  addActivityLog: (entry) => {
+    const fullEntry = createActivityEntry(
+      entry.category,
+      entry.action,
+      entry.details,
+      entry
+    );
+    set((s) => ({
+      activityLogs: [fullEntry, ...(s.activityLogs || [])],
+    }));
+  },
+  clearActivityLogs: () => set({ activityLogs: [] }),
 
   setActiveTab: (tab) => set({ activeTab: tab }),
   setActiveWorkflowId: (id) => {
@@ -576,8 +614,20 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       ],
     };
 
+    const createLog = createActivityEntry(
+      "workflow_creation",
+      "Workflow Definition Created",
+      `Created process definition '${name}' (v1.0.0) with default state pipeline.`,
+      {
+        workflowId: newId,
+        workflowName: name,
+        severity: "success",
+      }
+    );
+
     set((state) => ({
       workflows: [...state.workflows, newWf],
+      activityLogs: [createLog, ...(state.activityLogs || [])],
       activeWorkflowId: newId,
       selectedStateId: "step-1",
       selectedStateIds: ["step-1"],
@@ -684,8 +734,20 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     // Ensure the imported workflow's IDs are added to occupied space by doing nothing strictly here 
     // but extractAllIds will pick them up later when operations are run.
 
+    const importLog = createActivityEntry(
+      "workflow_import",
+      "Workflow Definition Imported",
+      `Imported definition '${workflow.name}' (v${workflow.version}) with ${workflow.states.length} states into workspace.`,
+      {
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        severity: "info",
+      }
+    );
+
     set((state) => ({
       workflows: [workflow, ...state.workflows],
+      activityLogs: [importLog, ...(state.activityLogs || [])],
       activeWorkflowId: workflow.id,
       selectedStateId: firstState,
       selectedStateIds: firstState ? [firstState] : [],
@@ -708,7 +770,14 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         const occupiedIds = extractAllIds(draft);
         finalId = generateDesignerId("state", occupiedIds);
       }
-      draft.states.push({ ...stateDef, id: finalId } as WorkflowState);
+      draft.states.push({
+        entryActions: [],
+        activeActions: [],
+        exitActions: [],
+        transitions: [],
+        ...stateDef,
+        id: finalId,
+      } as WorkflowState);
     });
     set({
       selectedStateId: finalId,
@@ -1080,8 +1149,20 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   startNewRun: (workflowId, customContext) => {
     const wf = get().workflows.find((w) => w.id === workflowId) || vendorInvoiceWorkflow;
     const newRun = createWorkflowRun(wf, customContext);
+    const runLog = createActivityEntry(
+      "run_event",
+      "Workflow Simulation Started",
+      `Started case simulation run '${newRun.id}' for '${wf.name}' on initial state '${newRun.currentStateId}'.`,
+      {
+        workflowId: wf.id,
+        workflowName: wf.name,
+        severity: "info",
+        metadata: { runId: newRun.id },
+      }
+    );
     set((state) => ({
       activeRuns: [newRun, ...state.activeRuns],
+      activityLogs: [runLog, ...(state.activityLogs || [])],
       activeRunId: newRun.id,
     }));
     return newRun;
@@ -1101,17 +1182,40 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       payload,
     });
 
+    const eventLog = createActivityEntry(
+      "run_event",
+      "Event Dispatched to Simulation",
+      `Dispatched '${eventName}' on run '${runId}' (${wf.name}). Current state: '${updatedRun.currentStateId}'.`,
+      {
+        workflowId: wf.id,
+        workflowName: wf.name,
+        severity: updatedRun.status === "failed" ? "error" : "info",
+        metadata: { runId, eventName },
+      }
+    );
+
     set((state) => ({
       activeRuns: state.activeRuns.map((r) => (r.id === runId ? updatedRun : r)),
+      activityLogs: [eventLog, ...(state.activityLogs || [])],
     }));
   },
 
   setActiveRunId: (runId) => set({ activeRunId: runId }),
 
-  addConnection: (conn) =>
+  addConnection: (conn) => {
+    const connLog = createActivityEntry(
+      "connection",
+      "Connection Credential Configured",
+      `Configured integration credential '${conn.name}' (${conn.service}).`,
+      {
+        severity: "info",
+      }
+    );
     set((state) => ({
       connections: [...state.connections, conn],
-    })),
+      activityLogs: [connLog, ...(state.activityLogs || [])],
+    }));
+  },
 }));
 
 export function createInitialTestStore() {
@@ -1164,6 +1268,7 @@ export function createInitialTestStore() {
         lastTestedAt: new Date().toISOString(),
       },
     ],
+    activityLogs: seedInitialActivityLogs(initialSamples, []),
   };
 }
 

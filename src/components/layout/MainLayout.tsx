@@ -7,6 +7,7 @@ import { SimulationBar } from "../runtime/SimulationBar";
 import { RunTimeline } from "../runtime/RunTimeline";
 import { HomeView } from "../views/HomeView";
 import { WorkflowListView } from "../views/WorkflowListView";
+import { ActivityView } from "../views/ActivityView";
 import { ConnectionsView } from "../views/ConnectionsView";
 import { ComponentsView } from "../views/ComponentsView";
 import { SettingsView } from "../views/SettingsView";
@@ -80,6 +81,12 @@ export const MainLayout: React.FC = () => {
         {activeTab === "workflows" && (
           <div className="flex-1 overflow-y-auto bg-[#020617]/50">
             <WorkflowListView />
+          </div>
+        )}
+
+        {activeTab === "activity" && (
+          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <ActivityView />
           </div>
         )}
 

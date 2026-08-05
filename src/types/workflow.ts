@@ -300,3 +300,25 @@ export interface ReusableComponent {
   description: string;
   payload: ActionDefinition | GuardDefinition | WorkflowDefinition;
 }
+
+export type WorkspaceActivityCategory =
+  | "workflow_creation"
+  | "workflow_import"
+  | "designer_edit"
+  | "run_event"
+  | "connection"
+  | "system";
+
+export interface WorkspaceActivity {
+  id: string;
+  timestamp: string;
+  category: WorkspaceActivityCategory;
+  action: string;
+  workflowId?: string;
+  workflowName?: string;
+  details: string;
+  actor?: string;
+  severity?: "info" | "success" | "warning" | "error";
+  metadata?: Record<string, unknown>;
+}
+
