@@ -141,8 +141,8 @@ describe("Workspace Activity & Audit Trail", () => {
     it("renders the Activity View title, summary stats, and search bar", () => {
       render(<ActivityView />);
 
-      expect(screen.getByRole("heading", { name: /Activity Log/i })).not.toBeNull();
-      expect(screen.getByText("Workspace Audit & Provenance")).not.toBeNull();
+      expect(screen.getByRole("heading", { name: /Activity Feed/i })).not.toBeNull();
+      expect(screen.getByText("Workspace Activity")).not.toBeNull();
       expect(screen.getByText("Total Logged")).not.toBeNull();
       expect(screen.getByPlaceholderText(/Filter actions by workflow/i)).not.toBeNull();
     });
@@ -176,7 +176,7 @@ describe("Workspace Activity & Audit Trail", () => {
       });
 
       render(<MainLayout />);
-      expect(screen.getByRole("heading", { name: /Activity Log/i })).not.toBeNull();
+      expect(screen.getByRole("heading", { name: /Activity Feed/i })).not.toBeNull();
     });
   });
 });

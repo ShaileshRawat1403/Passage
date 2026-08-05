@@ -1253,7 +1253,7 @@ export function createInitialTestStore() {
         name: "Google DeepMind Gemini API",
         type: "agent_provider" as const,
         service: "Gemini 3.6 Flash",
-        status: "connected" as const,
+        status: "configured" as const,
         lastTestedAt: new Date().toISOString(),
       },
       {
@@ -1261,7 +1261,7 @@ export function createInitialTestStore() {
         name: "ERP Vendor Registry API",
         type: "api_key" as const,
         service: "REST Endpoint",
-        status: "connected" as const,
+        status: "configured" as const,
         lastTestedAt: new Date().toISOString(),
       },
       {
@@ -1269,7 +1269,7 @@ export function createInitialTestStore() {
         name: "Finance Slack Webhook",
         type: "webhook" as const,
         service: "Slack Channels",
-        status: "connected" as const,
+        status: "configured" as const,
         lastTestedAt: new Date().toISOString(),
       },
     ],

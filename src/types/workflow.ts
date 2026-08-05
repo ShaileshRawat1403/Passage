@@ -289,8 +289,10 @@ export interface ConnectionCredential {
   name: string;
   type: "api_key" | "oauth2" | "basic_auth" | "agent_provider" | "webhook";
   service: string;
-  status: "connected" | "disconnected" | "testing";
+  status: "configured" | "untested" | "available_local" | "unavailable" | "verified" | "failed" | "connected" | "disconnected" | "testing";
   lastTestedAt?: string;
+  defaultModel?: string;
+  providerId?: string;
 }
 
 export interface ReusableComponent {
@@ -319,6 +321,7 @@ export interface WorkspaceActivity {
   details: string;
   actor?: string;
   severity?: "info" | "success" | "warning" | "error";
+  isDemo?: boolean;
   metadata?: Record<string, unknown>;
 }
 

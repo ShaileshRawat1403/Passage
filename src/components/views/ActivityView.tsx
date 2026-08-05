@@ -146,13 +146,13 @@ export const ActivityView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 font-mono text-[10px] uppercase text-cyan-400 tracking-wider font-bold mb-1">
             <History className="w-3.5 h-3.5" />
-            <span>Workspace Audit & Provenance</span>
+            <span>Workspace Activity</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold font-mono text-slate-100 tracking-wider uppercase flex items-center gap-2">
-            Activity Log
+            Activity Feed
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
-            Complete chronological audit trail of workflow definitions, imports, canvas edits, and runtime simulations.
+            Chronological log of workflow definitions, imports, canvas edits, and runtime simulations.
           </p>
         </div>
 
@@ -161,10 +161,10 @@ export const ActivityView: React.FC = () => {
             onClick={handleExportJson}
             disabled={filteredLogs.length === 0}
             className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-mono font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-            title="Export filtered activity log as JSON audit report"
+            title="Export filtered activity log as JSON file"
           >
             <Download className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Export Audit Log</span>
+            <span>Export Activity JSON</span>
           </button>
 
           {activityLogs.length > 0 && (
@@ -360,6 +360,12 @@ export const ActivityView: React.FC = () => {
                           >
                             {cfg.label}
                           </span>
+
+                          {log.isDemo && (
+                            <span className="px-2 py-0.5 rounded-md font-mono text-[9px] uppercase font-bold border bg-slate-800/80 border-slate-700 text-slate-400">
+                              Demo Event
+                            </span>
+                          )}
 
                           {log.workflowName && (
                             <button

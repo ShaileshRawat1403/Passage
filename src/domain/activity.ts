@@ -12,6 +12,7 @@ export function createActivityEntry(
     metadata?: Record<string, unknown>;
     timestamp?: string;
     id?: string;
+    isDemo?: boolean;
   }
 ): WorkspaceActivity {
   return {
@@ -24,6 +25,7 @@ export function createActivityEntry(
     workflowName: options?.workflowName,
     actor: options?.actor || "Workspace Operator",
     severity: options?.severity || "info",
+    isDemo: options?.isDemo ?? false,
     metadata: options?.metadata,
   };
 }
@@ -48,6 +50,7 @@ export function seedInitialActivityLogs(
         actor: "Passage Kernel",
         severity: "info",
         timestamp: new Date(baseTime - 86400000 * 3).toISOString(), // 3 days ago
+        isDemo: true,
       }
     )
   );
@@ -68,6 +71,7 @@ export function seedInitialActivityLogs(
             workflowName: wf.name,
             severity: "success",
             timestamp: creationTime,
+            isDemo: true,
           }
         )
       );
@@ -81,6 +85,7 @@ export function seedInitialActivityLogs(
             workflowName: wf.name,
             severity: "info",
             timestamp: new Date(new Date(creationTime).getTime() + 1800000).toISOString(),
+            isDemo: true,
           }
         )
       );
@@ -95,6 +100,7 @@ export function seedInitialActivityLogs(
             workflowName: wf.name,
             severity: "info",
             timestamp: creationTime,
+            isDemo: true,
           }
         )
       );
@@ -114,6 +120,7 @@ export function seedInitialActivityLogs(
           workflowName: wf ? wf.name : undefined,
           severity: run.status === "completed" ? "success" : run.status === "failed" ? "error" : "info",
           timestamp: run.startedAt || new Date(baseTime - 1800000).toISOString(),
+          isDemo: true,
         }
       )
     );

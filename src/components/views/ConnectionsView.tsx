@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, RefreshCw, Plus, Bot, Globe, Cpu, Server, ShieldCheck, Key, Zap, Trash2 } from "lucide-react";
+import { CheckCircle2, RefreshCw, Plus, Bot, Globe, Cpu, Server, ShieldCheck, Key, Zap, Info } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
 import { ConnectionCredential } from "../../types/workflow";
 
@@ -11,7 +11,7 @@ const PROVIDER_PRESETS = [
     type: "agent_provider" as const,
     defaultModel: "gpt-4o",
     badge: "Commercial LLM",
-    description: "Connect OpenAI models for automated guard evaluations, decision nodes, and function calling.",
+    description: "Configuration template for OpenAI API endpoints (e.g., GPT-4o, o1, o3-mini).",
   },
   {
     id: "ollama",
@@ -20,7 +20,7 @@ const PROVIDER_PRESETS = [
     type: "agent_provider" as const,
     defaultModel: "llama3.1:8b",
     badge: "Local Open Source",
-    description: "Run private open-weights models (Llama 3, Mistral, DeepSeek, Qwen) on your own infrastructure.",
+    description: "Self-hosted open-weights models (Llama 3, Mistral, DeepSeek). Note: Local Passage targets localhost; Cloud Passage requires a network-accessible endpoint or bridge.",
   },
   {
     id: "openrouter",
@@ -29,7 +29,7 @@ const PROVIDER_PRESETS = [
     type: "agent_provider" as const,
     defaultModel: "mistralai/mistral-large",
     badge: "Open LLM Gateway",
-    description: "Route requests to high-throughput open LLMs via unified OpenAI-compatible endpoint schema.",
+    description: "OpenAI-compatible gateway endpoints routing to open-weights inference providers.",
   },
   {
     id: "gemini",
@@ -38,7 +38,7 @@ const PROVIDER_PRESETS = [
     type: "agent_provider" as const,
     defaultModel: "gemini-1.5-pro",
     badge: "Multimodal AI",
-    description: "High-speed multimodal reasoning and long-context state validation.",
+    description: "Google Gemini generative API endpoint template for structured action execution.",
   },
   {
     id: "anthropic",
@@ -47,7 +47,7 @@ const PROVIDER_PRESETS = [
     type: "agent_provider" as const,
     defaultModel: "claude-3-5-sonnet-20240620",
     badge: "Enterprise AI",
-    description: "Complex reasoning, structured JSON outputs, and policy guard enforcement.",
+    description: "Anthropic Claude API template for complex reasoning and structured JSON output actions.",
   },
 ];
 
@@ -57,7 +57,7 @@ export const ConnectionsView: React.FC = () => {
 
   // Connection form state
   const [selectedPreset, setSelectedPreset] = useState("openai");
-  const [name, setName] = useState("OpenAI Production Cluster");
+  const [name, setName] = useState("OpenAI Provider Config");
   const [service, setService] = useState("https://api.openai.com/v1");
   const [model, setModel] = useState("gpt-4o");
   const [apiKey, setApiKey] = useState("");
@@ -81,16 +81,18 @@ export const ConnectionsView: React.FC = () => {
       name,
       type: selectedPreset === "custom_api" ? "api_key" : "agent_provider",
       service: service || "External API Endpoint",
-      status: "connected",
+      status: "configured",
       lastTestedAt: new Date().toISOString(),
+      defaultModel: model,
+      providerId: selectedPreset,
     });
 
     // Log activity
     useWorkflowStore.getState().addActivityLog({
       category: "connection",
-      action: "API Connection Configured",
-      details: `Configured '${name}' (${service}) with model '${model}'.`,
-      severity: "success",
+      action: "Provider Connection Template Configured",
+      details: `Configured template '${name}' (${service}) with default model '${model}'.`,
+      severity: "info",
     });
 
     setName("");
@@ -99,14 +101,41 @@ export const ConnectionsView: React.FC = () => {
     setShowAdd(false);
   };
 
-  const handleTestPing = (id: string, name: string) => {
+  const handleTestPing = (id: string) => {
     setTestingId(id);
     setPingSuccess(null);
     setTimeout(() => {
       setTestingId(null);
       setPingSuccess(id);
-      setTimeout(() => setPingSuccess(null), 3000);
+      setTimeout(() => setPingSuccess(null), 3500);
     }, 600);
+  };
+
+  const renderStatusBadge = (status: ConnectionCredential["status"]) => {
+    switch (status) {
+      case "configured":
+        return (
+          <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
+            <CheckCircle2 className="w-3 h-3" />
+            Configured
+          </span>
+        );
+      case "connected":
+      case "verified":
+        return (
+          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
+            <CheckCircle2 className="w-3 h-3" />
+            Verified
+          </span>
+        );
+      case "untested":
+      default:
+        return (
+          <span className="px-2.5 py-1 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
+            Untested
+          </span>
+        );
+    }
   };
 
   return (
@@ -119,10 +148,10 @@ export const ConnectionsView: React.FC = () => {
             <span>AI Provider & Integration Hub</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold font-mono text-slate-100 tracking-wider uppercase">
-            Connections & AI Model Providers
+            Provider Configuration Templates
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
-            Configure external API endpoints, commercial LLM providers (OpenAI, Anthropic, Gemini), and self-hosted open-weights models (Ollama, vLLM, Groq).
+            Configure integration templates for commercial LLMs, OpenAI-compatible gateways, and self-hosted open-weights engines.
           </p>
         </div>
 
@@ -131,7 +160,7 @@ export const ConnectionsView: React.FC = () => {
           className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold font-mono text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer shrink-0"
         >
           <Plus className="w-4 h-4" />
-          <span>Add Provider Connection</span>
+          <span>Add Provider Template</span>
         </button>
       </div>
 
@@ -140,9 +169,9 @@ export const ConnectionsView: React.FC = () => {
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
             <Zap className="w-3.5 h-3.5 text-cyan-400" />
-            Supported Provider Templates
+            Provider Templates
           </h2>
-          <span className="text-[10px] font-mono text-slate-500">Local Ollama & OpenAI Compatible supported</span>
+          <span className="text-[10px] font-mono text-slate-500">Local & Cloud LLM Endpoints</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -173,11 +202,19 @@ export const ConnectionsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Active Connections Grid */}
+      {/* Topology Notice Banner */}
+      <div className="p-3.5 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 flex items-start gap-3 font-mono text-[11px] text-slate-300">
+        <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+        <div>
+          <span className="text-cyan-300 font-bold">Inference Topology Note:</span> Local Passage runtimes can connect directly to local endpoints (e.g. <code className="text-cyan-200">http://localhost:11434</code>). Cloud-hosted Passage requires an authenticated network-accessible gateway or companion bridge.
+        </div>
+      </div>
+
+      {/* 3. Configured Connections Grid */}
       <div className="space-y-3">
         <h2 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
           <Server className="w-3.5 h-3.5 text-emerald-400" />
-          Configured Integration Credentials ({connections.length})
+          Configured Provider Connections ({connections.length})
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -212,34 +249,39 @@ export const ConnectionsView: React.FC = () => {
                     </div>
                   </div>
 
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Connected
-                  </span>
+                  {renderStatusBadge(c.status)}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-950/60 border border-white/5 space-y-1.5 font-mono text-[11px]">
                   <div className="flex justify-between text-slate-400">
                     <span>Authentication:</span>
-                    <span className="text-slate-200">{isOllama ? "No API Key (Local Network)" : "Bearer API Token (Masked ••••••••)"}</span>
+                    <span className="text-slate-200">{isOllama ? "Local Network (No Auth)" : "Secret Manager Reference"}</span>
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Service Type:</span>
-                    <span className="text-cyan-400 font-semibold">{c.type === "agent_provider" ? "LLM Inference Engine" : "HTTP REST Endpoint"}</span>
+                    <span className="text-cyan-400 font-semibold">{c.type === "agent_provider" ? "LLM Action Provider" : "HTTP REST Endpoint"}</span>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                  <span>Last health ping: {new Date(c.lastTestedAt || Date.now()).toLocaleTimeString()}</span>
+                <div className="pt-2 border-t border-white/10 flex flex-col gap-1.5 text-[10px] font-mono text-slate-400">
+                  <div className="flex items-center justify-between">
+                    <span>Last checked: {new Date(c.lastTestedAt || Date.now()).toLocaleTimeString()}</span>
 
-                  <button
-                    onClick={() => handleTestPing(c.id, c.name)}
-                    disabled={isTesting}
-                    className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 font-semibold cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? "animate-spin" : ""}`} />
-                    <span>{isTesting ? "Pinging..." : isPinged ? "Ping 200 OK!" : "Test Ping"}</span>
-                  </button>
+                    <button
+                      onClick={() => handleTestPing(c.id)}
+                      disabled={isTesting}
+                      className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? "animate-spin" : ""}`} />
+                      <span>{isTesting ? "Checking..." : isPinged ? "Simulated Check OK" : "Template Check"}</span>
+                    </button>
+                  </div>
+
+                  {isPinged && (
+                    <div className="p-2 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[9px]">
+                      Template syntax check succeeded. Active network verification requires P2.1 provider adapter layer.
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -255,7 +297,7 @@ export const ConnectionsView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-cyan-400" />
                 <h3 className="font-bold text-sm text-slate-100 uppercase font-mono tracking-wider">
-                  Configure AI Provider / API Endpoint
+                  Configure Provider Template
                 </h3>
               </div>
               <button
@@ -316,36 +358,45 @@ export const ConnectionsView: React.FC = () => {
 
               <div>
                 <label className="block text-slate-400 font-mono mb-1 text-[10px] uppercase tracking-wider">
-                  Model Alias / Identifier
+                  Default Model Alias
                 </label>
                 <input
                   type="text"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. llama3.1:8b"
+                  placeholder="e.g. gpt-4o"
                   className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none text-xs focus:border-cyan-400 font-mono"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-slate-400 font-mono mb-1 text-[10px] uppercase tracking-wider">
-                API Key Secret {selectedPreset === "ollama" && "(Optional for local network)"}
-              </label>
-              <div className="relative">
-                <Key className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={selectedPreset === "ollama" ? "Not required for local Ollama" : "sk-..."}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none text-xs focus:border-cyan-400 font-mono"
-                />
+            {selectedPreset === "ollama" || service.includes("localhost") ? (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[10px] space-y-1">
+                <p className="font-bold">Ollama / Localhost Network Topology:</p>
+                <p className="text-slate-300">
+                  <code className="text-amber-200">localhost:11434</code> works directly when Passage runs locally. For Cloud Passage deployments, configure an authenticated bridge or accessible endpoint URL.
+                </p>
               </div>
-              <p className="text-[10px] font-mono text-slate-500 mt-1">
-                Keys are stored securely in memory or environment secrets in production.
-              </p>
-            </div>
+            ) : (
+              <div>
+                <label className="block text-slate-400 font-mono mb-1 text-[10px] uppercase tracking-wider">
+                  Secret Key Reference (P2.0 Secret Manager)
+                </label>
+                <div className="relative">
+                  <Key className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none text-xs focus:border-cyan-400 font-mono"
+                  />
+                </div>
+                <p className="text-[10px] font-mono text-slate-500 mt-1">
+                  Credentials will map to GCP Secret Manager references in P2.0. Never logged or stored unencrypted.
+                </p>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
               <button
@@ -358,7 +409,7 @@ export const ConnectionsView: React.FC = () => {
                 onClick={handleAdd}
                 className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold font-mono text-xs cursor-pointer shadow-lg shadow-cyan-500/20"
               >
-                Save Connection
+                Save Template Config
               </button>
             </div>
           </div>
