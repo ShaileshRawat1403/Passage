@@ -24,5 +24,6 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true
+  },
+  "exclude": ["dist", "node_modules"]
   }
-}

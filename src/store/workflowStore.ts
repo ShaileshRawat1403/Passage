@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { computeWorkflowLayout, WorkflowLayoutOptions } from "../lib/layout/index";
+
 import {
   WorkflowDefinition,
   WorkflowState,
@@ -128,6 +130,9 @@ interface WorkflowStateStore {
   copySelection: (workflowId: string, stateIds: string[], transitionIds: string[]) => void;
   pasteSelection: (workflowId: string, offset?: { x: number; y: number }) => void;
   deleteSelection: (workflowId: string, stateIds: string[], transitionIds: string[]) => void;
+
+  applyWorkflowLayout: (workflowId: string, options: WorkflowLayoutOptions) => Promise<void>;
+
 
   addActionToState: (
     workflowId: string,
@@ -996,6 +1001,28 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
           draft.initialStateId = draft.states[0].id;
         } else {
           draft.initialStateId = "";
+        }
+      }
+    });
+  },
+
+  applyWorkflowLayout: async (workflowId, options) => {
+    const wf = get().workflows.find((w) => w.id === workflowId);
+    if (!wf) return;
+    const result = await computeWorkflowLayout(wf, options);
+    
+    // Only commit if there are no errors (we treat all warnings from our strict checks as blockers)
+    if (result.warnings.length > 0) {
+      console.warn("Layout blocked due to warnings:", result.warnings);
+      // We could set these warnings into the store, but for now we just block
+      return;
+    }
+    
+    get().commitDraftOperation(workflowId, "AUTO_LAYOUT_APPLIED", undefined, (draft) => {
+      for (const st of draft.states) {
+        const pos = result.positions[st.id];
+        if (pos) {
+          st.position = pos;
         }
       }
     });

@@ -155,66 +155,29 @@ export const FloatingCanvasToolbar: React.FC = () => {
   };
 
   // 5. Auto-Layout Handler (Left-to-Right Column Layout)
-  const handleAutoLayout = () => {
-    if (!activeWorkflow || !activeWorkflow.states.length) return;
+  const [isLayingOut, setIsLayingOut] = React.useState(false);
 
-    // Simple topological rank-based auto layout
-    const states = [...activeWorkflow.states];
-    const columnMap = new Map<string, number>();
+  const handleAutoLayout = async (direction: "LR" | "TB") => {
+    if (!activeWorkflow || !activeWorkflow.states.length || isLayingOut) return;
 
-    // Initial state is column 0
-    const startState = states.find((s) => s.type === "start") || states[0];
-    if (!startState) return;
-    columnMap.set(startState.id, 0);
+    setIsLayingOut(true);
+    try {
+      await useWorkflowStore.getState().applyWorkflowLayout(activeWorkflow.id, {
+        direction,
+        nodeSpacing: 50,
+        rankSpacing: 80,
+        componentSpacing: 100,
+        finalStateAlignment: true,
+      });
 
-    let changed = true;
-    let iterations = 0;
-    while (changed && iterations < 10) {
-      changed = false;
-      iterations++;
-      for (const st of states) {
-        const currCol = columnMap.get(st.id) ?? 0;
-        for (const tr of st.transitions || []) {
-          const targetCol = columnMap.get(tr.targetStateId);
-          if (targetCol === undefined || targetCol <= currCol) {
-            columnMap.set(tr.targetStateId, currCol + 1);
-            changed = true;
-          }
-        }
-      }
+      setTimeout(() => {
+        fitView({ padding: 0.2, duration: 800 });
+      }, 50);
+    } catch (err) {
+      console.error("Layout failed", err);
+    } finally {
+      setIsLayingOut(false);
     }
-
-    // Group states by column
-    const columns: Record<number, typeof states> = {};
-    for (const st of states) {
-      const col = columnMap.get(st.id) || 0;
-      if (!columns[col]) columns[col] = [];
-      columns[col].push(st);
-    }
-
-    // Apply X and Y coordinates
-    useWorkflowStore.getState().commitDraftOperation(
-      activeWorkflow.id,
-      "AUTO_LAYOUT_APPLIED",
-      undefined,
-      (draft) => {
-        Object.entries(columns).forEach(([colStr, colStates]) => {
-          const colIdx = Number(colStr);
-          colStates.forEach((st, rowIdx) => {
-            const draftState = draft.states.find((s) => s.id === st.id);
-            if (draftState) {
-              draftState.position = {
-                x: 80 + colIdx * 320,
-                y: 120 + rowIdx * 180,
-              };
-            }
-          });
-        });
-      }
-    );
-
-    setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
-    showToast("Auto-layout applied!");
   };
 
   // 6. Quick Add State Handler
@@ -342,14 +305,31 @@ export const FloatingCanvasToolbar: React.FC = () => {
           <ZoomOut className="w-4 h-4" />
         </button>
 
-        {/* Auto Layout */}
-        <button
-          onClick={handleAutoLayout}
-          className="p-1.5 rounded-xl text-slate-300 hover:text-amber-400 hover:bg-white/5 transition-all cursor-pointer"
-          title="Auto-Layout State Diagram"
-        >
-          <Layout className="w-4 h-4" />
-        </button>
+        {/* Arrange Dropdown */}
+        <div className="relative group">
+          <button
+            disabled={isLayingOut}
+            className="p-1.5 rounded-xl text-slate-300 hover:text-amber-400 hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
+            title="Auto-Layout State Diagram"
+          >
+            <Layout className="w-4 h-4" />
+          </button>
+          
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-40 py-1 bg-slate-950/95 backdrop-blur-2xl border border-white/15 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-50">
+            <button
+              onClick={() => handleAutoLayout("LR")}
+              className="w-full px-3 py-1.5 text-left text-xs font-mono text-slate-200 hover:bg-amber-500/10 hover:text-amber-400 cursor-pointer"
+            >
+              Left to Right
+            </button>
+            <button
+              onClick={() => handleAutoLayout("TB")}
+              className="w-full px-3 py-1.5 text-left text-xs font-mono text-slate-200 hover:bg-amber-500/10 hover:text-amber-400 cursor-pointer"
+            >
+              Top to Bottom
+            </button>
+          </div>
+        </div>
 
         <div className="h-4 w-px bg-white/10 mx-0.5" />
 
