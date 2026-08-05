@@ -21,6 +21,9 @@ import { useWorkflowStore } from "../../store/workflowStore";
 import { GuardBuilder } from "./GuardBuilder";
 import { ActionConfigModal } from "./ActionConfigModal";
 import { ActionDefinition, StateType } from "../../types/workflow";
+import { HumanReadableTransitionEditor } from "./HumanReadableTransitionEditor";
+import { classifyWorkflowEdges } from "../../lib/layout/classification";
+import { formatGuard } from "../../domain/transitionFormatter";
 
 type InspectorTab = "state" | "actions" | "transitions" | "guards" | "policies" | "data";
 
@@ -40,6 +43,7 @@ export const FloatingStateInspector: React.FC = () => {
     addTransition,
     updateTransition,
     deleteTransition,
+    validationIssues,
   } = useWorkflowStore();
 
   const [activeTab, setActiveTab] = useState<InspectorTab>("state");
@@ -169,58 +173,13 @@ export const FloatingStateInspector: React.FC = () => {
       {!isMinimized && (
         <>
           {/* IF TRANSITION IS SELECTED */}
-          {activeTransition && (
-            <div className="p-4 overflow-y-auto space-y-4 flex-1">
-              <div>
-                <label className="block text-slate-400 font-mono text-[10px] uppercase tracking-wider mb-1">
-                  Route Event Trigger
-                </label>
-                <input
-                  type="text"
-                  value={activeTransition.event}
-                  onChange={(e) =>
-                    updateTransition(activeWorkflowId, activeTransition.id, { event: e.target.value })
-                  }
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-cyan-400 font-mono font-bold outline-none focus:border-cyan-400"
-                  placeholder="e.g. VALIDATION_PASSED"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-mono text-[10px] uppercase tracking-wider mb-1">
-                  Target State ID
-                </label>
-                <select
-                  value={activeTransition.targetStateId}
-                  onChange={(e) =>
-                    updateTransition(activeWorkflowId, activeTransition.id, { targetStateId: e.target.value })
-                  }
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-200 font-semibold outline-none focus:border-cyan-400"
-                >
-                  {activeWorkflow?.states.map((st) => (
-                    <option key={st.id} value={st.id} className="bg-[#020617] text-slate-200">
-                      {st.name} ({st.id})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="pt-2 border-t border-white/10">
-                <GuardBuilder
-                  guard={activeTransition.guard}
-                  onChange={(guard) =>
-                    updateTransition(activeWorkflowId, activeTransition.id, { guard })
-                  }
-                />
-              </div>
-
-              <button
-                onClick={() => deleteTransition(activeWorkflowId, activeTransition.id)}
-                className="w-full py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all mt-4 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Delete Route Transition</span>
-              </button>
+          {activeTransition && activeWorkflow && (
+            <div className="p-4 overflow-y-auto flex-1">
+              <HumanReadableTransitionEditor
+                workflow={activeWorkflow}
+                transition={activeTransition}
+                validationIssues={validationIssues}
+              />
             </div>
           )}
 
@@ -404,7 +363,7 @@ export const FloatingStateInspector: React.FC = () => {
                 {activeTab === "transitions" && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-200">Outgoing Transitions</span>
+                      <span className="font-semibold text-slate-200">Outgoing Routes</span>
                       <button
                         onClick={() => {
                           const targetState = activeWorkflow?.states.find((s) => s.id !== activeState.id);
@@ -426,23 +385,66 @@ export const FloatingStateInspector: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      {activeState.transitions?.map((tr) => (
-                        <div
-                          key={tr.id}
-                          onClick={() => setSelectedTransitionId(tr.id)}
-                          className="p-3 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-400 cursor-pointer transition-all space-y-1"
-                        >
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-mono text-cyan-400 font-bold">WHEN {tr.event}</span>
-                            <span className="text-[10px] text-slate-400">Priority: {tr.priority || 10}</span>
-                          </div>
-                          <div className="text-slate-400 flex items-center gap-1.5 font-mono">
-                            <span>THEN</span>
-                            <ArrowRight className="w-3 h-3 text-cyan-400" />
-                            <span className="text-slate-200 font-semibold">{tr.targetStateId}</span>
-                          </div>
-                        </div>
-                      ))}
+                      {(() => {
+                        const edgeKinds = activeWorkflow ? classifyWorkflowEdges(activeWorkflow) : {};
+                        return activeState.transitions?.map((tr) => {
+                          const targetState = activeWorkflow?.states.find((s) => s.id === tr.targetStateId);
+                          const targetName = targetState ? targetState.name : tr.targetStateId;
+                          const kind = edgeKinds[tr.id] || "forward";
+                          const guardSummary = formatGuard(tr.guard);
+
+                          return (
+                            <div
+                              key={tr.id}
+                              onClick={() => setSelectedTransitionId(tr.id)}
+                              className="p-3 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-400 cursor-pointer transition-all space-y-1.5 group hover:bg-white/[0.07]"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-cyan-400 font-bold text-xs truncate">
+                                  WHEN {tr.event || "NO_EVENT"}
+                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono text-[9px] font-bold">
+                                    P{tr.priority ?? 10}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold ${
+                                      kind === "loopback"
+                                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                        : kind === "branch"
+                                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                        : kind === "self_loop"
+                                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                        : "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                                    }`}
+                                  >
+                                    {kind}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="text-slate-200 flex items-center gap-1.5 font-sans font-medium">
+                                <span className="text-[10px] font-mono text-slate-400 uppercase">THEN</span>
+                                <ArrowRight className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                <span className="font-semibold text-slate-100">{targetName}</span>
+                                {targetState && (
+                                  <span className="text-[10px] text-slate-400 font-mono">({tr.targetStateId})</span>
+                                )}
+                              </div>
+
+                              {guardSummary ? (
+                                <div className="text-[10px] text-amber-300 font-mono bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20 truncate">
+                                  IF {guardSummary}
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-slate-400 font-sans italic">
+                                  No conditions (Always eligible)
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
