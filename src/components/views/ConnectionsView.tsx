@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, RefreshCw, Plus, Bot, Globe, Cpu, Server, ShieldCheck, Key, Zap, Info } from "lucide-react";
+import { CheckCircle2, Plus, Bot, Globe, Cpu, Server, ShieldCheck, Key, Zap, Info } from "lucide-react";
 import { useWorkflowStore } from "../../store/workflowStore";
 import { ConnectionCredential } from "../../types/workflow";
 
@@ -61,8 +61,6 @@ export const ConnectionsView: React.FC = () => {
   const [service, setService] = useState("https://api.openai.com/v1");
   const [model, setModel] = useState("gpt-4o");
   const [apiKey, setApiKey] = useState("");
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [pingSuccess, setPingSuccess] = useState<string | null>(null);
 
   const handleSelectPreset = (presetId: string) => {
     setSelectedPreset(presetId);
@@ -81,7 +79,7 @@ export const ConnectionsView: React.FC = () => {
       name,
       type: selectedPreset === "custom_api" ? "api_key" : "agent_provider",
       service: service || "External API Endpoint",
-      status: "configured",
+      status: "available_local",
       lastTestedAt: new Date().toISOString(),
       defaultModel: model,
       providerId: selectedPreset,
@@ -101,18 +99,15 @@ export const ConnectionsView: React.FC = () => {
     setShowAdd(false);
   };
 
-  const handleTestPing = (id: string) => {
-    setTestingId(id);
-    setPingSuccess(null);
-    setTimeout(() => {
-      setTestingId(null);
-      setPingSuccess(id);
-      setTimeout(() => setPingSuccess(null), 3500);
-    }, 600);
-  };
-
   const renderStatusBadge = (status: ConnectionCredential["status"]) => {
     switch (status) {
+      case "available_local":
+        return (
+          <span className="px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
+            <CheckCircle2 className="w-3 h-3" />
+            Available locally
+          </span>
+        );
       case "configured":
         return (
           <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
@@ -120,12 +115,24 @@ export const ConnectionsView: React.FC = () => {
             Configured
           </span>
         );
-      case "connected":
       case "verified":
+      case "connected":
         return (
           <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
             <CheckCircle2 className="w-3 h-3" />
             Verified
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
+            Failed
+          </span>
+        );
+      case "unavailable":
+        return (
+          <span className="px-2.5 py-1 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/30 font-mono text-[10px] font-bold flex items-center gap-1 shrink-0">
+            Unavailable
           </span>
         );
       case "untested":
@@ -148,7 +155,7 @@ export const ConnectionsView: React.FC = () => {
             <span>AI Provider & Integration Hub</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold font-mono text-slate-100 tracking-wider uppercase">
-            Provider Configuration Templates
+            Provider Templates
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
             Configure integration templates for commercial LLMs, OpenAI-compatible gateways, and self-hosted open-weights engines.
@@ -219,8 +226,6 @@ export const ConnectionsView: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {connections.map((c) => {
-            const isTesting = testingId === c.id;
-            const isPinged = pingSuccess === c.id;
             const isOllama = c.name.toLowerCase().includes("ollama") || c.service.includes("11434");
             const isOpenAI = c.name.toLowerCase().includes("openai");
 
@@ -263,25 +268,10 @@ export const ConnectionsView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-white/10 flex flex-col gap-1.5 text-[10px] font-mono text-slate-400">
-                  <div className="flex items-center justify-between">
-                    <span>Last checked: {new Date(c.lastTestedAt || Date.now()).toLocaleTimeString()}</span>
-
-                    <button
-                      onClick={() => handleTestPing(c.id)}
-                      disabled={isTesting}
-                      className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? "animate-spin" : ""}`} />
-                      <span>{isTesting ? "Checking..." : isPinged ? "Simulated Check OK" : "Template Check"}</span>
-                    </button>
-                  </div>
-
-                  {isPinged && (
-                    <div className="p-2 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[9px]">
-                      Template syntax check succeeded. Active network verification requires P2.1 provider adapter layer.
-                    </div>
-                  )}
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                  <span className="text-slate-400 font-mono text-[10px]">
+                    Testing becomes available with the P2 provider adapter
+                  </span>
                 </div>
               </div>
             );
