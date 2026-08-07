@@ -169,24 +169,71 @@ describe("P2.0 Durable Runtime Spine - Persistence, Idempotency & Events", () =>
       expect(res.error).toContain("currently in progress");
     });
 
-    it("proves state and context continuity across simulated server restarts", async () => {
+    it("proves state, event, sequence, and idempotency continuity across complete durable adapter/service destruction and restart", async () => {
       await commandService.saveWorkflow(sampleWf);
       const runRes = await commandService.createRun(sampleWf.id, "CASE-RESTART-1");
       const run = runRes.data!;
 
-      await commandService.dispatchRunEvent(run.id, "SUBMIT_APPROVAL", {
-        invoiceAmount: 1200,
-      });
+      const idempKey = "idemp-restart-key-1";
+      const dispatchRes = await commandService.dispatchRunEvent(
+        run.id,
+        "SUBMIT_APPROVAL",
+        { invoiceAmount: 1200 },
+        idempKey
+      );
+      expect(dispatchRes.success).toBe(true);
 
-      // Simulate server restart: instantiate fresh CommandService reading from same persisted adapter
-      const newCommandService = new CommandService();
-      (newCommandService as any).adapter = adapter;
+      // Snapshot internal storage to simulate persistent disk/database recovery
+      const storageSnapshot = {
+        workflows: new Map((adapter as any).workflows),
+        versions: new Map((adapter as any).versions),
+        runs: new Map((adapter as any).runs),
+        runEvents: [...(adapter as any).runEvents],
+        activities: [...(adapter as any).activities],
+        connections: new Map((adapter as any).connections),
+        idempotencyRecords: new Map((adapter as any).idempotencyRecords),
+      };
 
-      const reloadedRun = await adapter.getWorkflowRun(run.id);
+      // Completely destroy old adapter & command service
+      (adapter as any) = null;
+      (commandService as any) = null;
+
+      // Re-create brand new adapter and seed with snapshot data
+      const freshAdapter = new MemoryPersistenceAdapter();
+      (freshAdapter as any).workflows = storageSnapshot.workflows;
+      (freshAdapter as any).versions = storageSnapshot.versions;
+      (freshAdapter as any).runs = storageSnapshot.runs;
+      (freshAdapter as any).runEvents = storageSnapshot.runEvents;
+      (freshAdapter as any).activities = storageSnapshot.activities;
+      (freshAdapter as any).connections = storageSnapshot.connections;
+      (freshAdapter as any).idempotencyRecords = storageSnapshot.idempotencyRecords;
+
+      const freshCommandService = new CommandService();
+      (freshCommandService as any).adapter = freshAdapter;
+
+      // Verify reloaded run state
+      const reloadedRun = await freshAdapter.getWorkflowRun(run.id);
       expect(reloadedRun).not.toBeNull();
       expect(reloadedRun?.id).toBe(run.id);
       expect(reloadedRun?.caseId).toBe("CASE-RESTART-1");
       expect(reloadedRun?.auditTrail.length).toBeGreaterThan(1);
+
+      // Verify events and monotonic sequence persistence
+      const reloadedEvents = await freshAdapter.getRunEvents(run.id);
+      expect(reloadedEvents.length).toBe(reloadedRun!.auditTrail.length);
+      for (let i = 0; i < reloadedEvents.length; i++) {
+        expect(reloadedEvents[i]?.sequence).toBe(i + 1);
+      }
+
+      // Verify idempotency record survived restart and returns duplicate result
+      const duplicateRes = await freshCommandService.dispatchRunEvent(
+        run.id,
+        "SUBMIT_APPROVAL",
+        { invoiceAmount: 1200 },
+        idempKey
+      );
+      expect(duplicateRes.success).toBe(true);
+      expect(duplicateRes.isDuplicate).toBe(true);
     });
   });
 

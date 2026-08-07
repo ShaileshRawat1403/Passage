@@ -57,37 +57,42 @@ export class CommandService {
       }
     }
 
-    const val = WorkflowDefinitionSchema.safeParse(definition);
-    if (!val.success) {
-      return {
-        success: false,
-        error: `Workflow validation failed: ${val.error.issues.map((i) => i.message).join(", ")}`,
+    try {
+      const val = WorkflowDefinitionSchema.safeParse(definition);
+      if (!val.success) {
+        const errMsg = `Workflow validation failed: ${val.error.issues.map((i) => i.message).join(", ")}`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
+
+      const savedHead = await this.adapter.saveWorkflowHead(val.data as WorkflowDefinition);
+
+      const activity: WorkspaceActivity = {
+        id: `act-wf-save-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        category: "designer_edit",
+        action: "Workflow Definition Saved",
+        workflowId: savedHead.id,
+        workflowName: savedHead.name,
+        details: `Saved workflow head ${savedHead.name} (v${savedHead.version}) with ${savedHead.states.length} states.`,
+        severity: "info",
+        isDemo: false,
       };
+      await this.adapter.appendWorkspaceActivity(activity);
+
+      if (idempotencyKey) {
+        await this.adapter.completeIdempotency(
+          idempotencyKey,
+          savedHead as unknown as Record<string, unknown>
+        );
+      }
+
+      return { success: true, data: savedHead };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, msg);
+      return { success: false, error: msg };
     }
-
-    const savedHead = await this.adapter.saveWorkflowHead(val.data as WorkflowDefinition);
-
-    const activity: WorkspaceActivity = {
-      id: `act-wf-save-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString(),
-      category: "designer_edit",
-      action: "Workflow Definition Saved",
-      workflowId: savedHead.id,
-      workflowName: savedHead.name,
-      details: `Saved workflow head ${savedHead.name} (v${savedHead.version}) with ${savedHead.states.length} states.`,
-      severity: "info",
-      isDemo: false,
-    };
-    await this.adapter.appendWorkspaceActivity(activity);
-
-    if (idempotencyKey) {
-      await this.adapter.completeIdempotency(
-        idempotencyKey,
-        savedHead as unknown as Record<string, unknown>
-      );
-    }
-
-    return { success: true, data: savedHead };
   }
 
   async publishWorkflowVersion(
@@ -122,48 +127,50 @@ export class CommandService {
       }
     }
 
-    const head = await this.adapter.getWorkflowHead(workflowId);
-    if (!head) {
-      return { success: false, error: `Workflow ${workflowId} not found` };
-    }
-
-    const updatedHead: WorkflowDefinition = {
-      ...head,
-      version,
-      status: "published",
-      updatedAt: new Date().toISOString(),
-    };
-
     try {
+      const head = await this.adapter.getWorkflowHead(workflowId);
+      if (!head) {
+        const errMsg = `Workflow ${workflowId} not found`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
+
+      const updatedHead: WorkflowDefinition = {
+        ...head,
+        version,
+        status: "published",
+        updatedAt: new Date().toISOString(),
+      };
+
       await this.adapter.saveWorkflowVersion(workflowId, version, updatedHead);
+      const savedHead = await this.adapter.saveWorkflowHead(updatedHead);
+
+      const activity: WorkspaceActivity = {
+        id: `act-wf-pub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        category: "designer_edit",
+        action: "Workflow Version Published",
+        workflowId: savedHead.id,
+        workflowName: savedHead.name,
+        details: `Published immutable workflow version ${version} for ${savedHead.name}.`,
+        severity: "success",
+        isDemo: false,
+      };
+      await this.adapter.appendWorkspaceActivity(activity);
+
+      if (idempotencyKey) {
+        await this.adapter.completeIdempotency(
+          idempotencyKey,
+          savedHead as unknown as Record<string, unknown>
+        );
+      }
+
+      return { success: true, data: savedHead };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, msg);
       return { success: false, error: msg };
     }
-
-    const savedHead = await this.adapter.saveWorkflowHead(updatedHead);
-
-    const activity: WorkspaceActivity = {
-      id: `act-wf-pub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString(),
-      category: "designer_edit",
-      action: "Workflow Version Published",
-      workflowId: savedHead.id,
-      workflowName: savedHead.name,
-      details: `Published immutable workflow version ${version} for ${savedHead.name}.`,
-      severity: "success",
-      isDemo: false,
-    };
-    await this.adapter.appendWorkspaceActivity(activity);
-
-    if (idempotencyKey) {
-      await this.adapter.completeIdempotency(
-        idempotencyKey,
-        savedHead as unknown as Record<string, unknown>
-      );
-    }
-
-    return { success: true, data: savedHead };
   }
 
   async createRun(
@@ -199,46 +206,53 @@ export class CommandService {
       }
     }
 
-    const wf = await this.adapter.getWorkflowHead(workflowId);
-    if (!wf) {
-      return { success: false, error: `Workflow ${workflowId} not found` };
-    }
+    try {
+      const wf = await this.adapter.getWorkflowHead(workflowId);
+      if (!wf) {
+        const errMsg = `Workflow ${workflowId} not found`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
 
-    const actualCaseId = caseId || `CASE-${Date.now().toString(36).toUpperCase()}`;
+      const actualCaseId = caseId || `CASE-${Date.now().toString(36).toUpperCase()}`;
+      const newRun = createWorkflowRun(wf, initialContext, actualCaseId);
 
-    const newRun = createWorkflowRun(wf, initialContext, actualCaseId);
+      const sequencedEvents = newRun.auditTrail.map((ev, i) => ({
+        ...ev,
+        sequence: i + 1,
+      }));
 
-    // Save run to storage
-    const savedRun = await this.adapter.saveWorkflowRun(newRun);
+      const activity: WorkspaceActivity = {
+        id: `act-run-create-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        category: "run_event",
+        action: "Workflow Run Started",
+        workflowId: wf.id,
+        workflowName: wf.name,
+        details: `Started run ${newRun.id} (Case: ${newRun.caseId}) on initial state '${newRun.currentStateId}'.`,
+        severity: "info",
+        isDemo: false,
+      };
 
-    // Append append-only run events with sequence
-    for (let i = 0; i < savedRun.auditTrail.length; i++) {
-      const ev = savedRun.auditTrail[i]!;
-      await this.adapter.appendRunEvent({ ...ev, sequence: i + 1 });
-    }
+      const runWithSequencedAudit: WorkflowRun = {
+        ...newRun,
+        auditTrail: sequencedEvents,
+      };
 
-    // Append workspace activity
-    const activity: WorkspaceActivity = {
-      id: `act-run-create-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString(),
-      category: "run_event",
-      action: "Workflow Run Started",
-      workflowId: wf.id,
-      workflowName: wf.name,
-      details: `Started run ${savedRun.id} (Case: ${savedRun.caseId}) on initial state '${savedRun.currentStateId}'.`,
-      severity: "info",
-      isDemo: false,
-    };
-    await this.adapter.appendWorkspaceActivity(activity);
-
-    if (idempotencyKey) {
-      await this.adapter.completeIdempotency(
+      const savedRun = await this.adapter.saveRunAndEventsBatch({
+        run: runWithSequencedAudit,
+        newEvents: sequencedEvents,
+        activity,
         idempotencyKey,
-        savedRun as unknown as Record<string, unknown>
-      );
-    }
+        idempotencyResponse: runWithSequencedAudit as unknown as Record<string, unknown>,
+      });
 
-    return { success: true, data: savedRun };
+      return { success: true, data: savedRun };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, msg);
+      return { success: false, error: msg };
+    }
   }
 
   async dispatchRunEvent(
@@ -277,66 +291,82 @@ export class CommandService {
       }
     }
 
-    const run = await this.adapter.getWorkflowRun(runId);
-    if (!run) {
-      return { success: false, error: `Run ${runId} not found` };
-    }
+    try {
+      const run = await this.adapter.getWorkflowRun(runId);
+      if (!run) {
+        const errMsg = `Run ${runId} not found`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
 
-    const wf = await this.adapter.getWorkflowHead(run.workflowId);
-    if (!wf) {
-      return { success: false, error: `Workflow definition for ${run.workflowId} not found` };
-    }
+      const wf = await this.adapter.getWorkflowHead(run.workflowId);
+      if (!wf) {
+        const errMsg = `Workflow definition for ${run.workflowId} not found`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
 
-    const prevAuditCount = run.auditTrail.length;
+      const prevAuditCount = run.auditTrail.length;
 
-    const result = dispatchWorkflowEvent(wf, run, {
-      id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      type: eventName,
-      timestamp: new Date().toISOString(),
-      source: "client_dispatch",
-      payload: eventPayload,
-    });
+      const result = dispatchWorkflowEvent(wf, run, {
+        id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        type: eventName,
+        timestamp: new Date().toISOString(),
+        source: "client_dispatch",
+        payload: eventPayload,
+      });
 
-    const updatedRun = await this.adapter.saveWorkflowRun(result.updatedRun);
-
-    // Persist new audit/run events with sequential numbering
-    const newEvents = updatedRun.auditTrail.slice(prevAuditCount);
-    for (let i = 0; i < newEvents.length; i++) {
-      const ev = newEvents[i]!;
-      await this.adapter.appendRunEvent({
+      const newEventsRaw = result.updatedRun.auditTrail.slice(prevAuditCount);
+      const newEventsSequenced = newEventsRaw.map((ev, i) => ({
         ...ev,
         sequence: prevAuditCount + i + 1,
-      });
-    }
+      }));
 
-    const transitionTaken = Boolean(result.transitionTaken);
+      const fullAuditTrail = [
+        ...run.auditTrail,
+        ...newEventsSequenced,
+      ];
 
-    // Log activity
-    const activity: WorkspaceActivity = {
-      id: `act-dispatch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString(),
-      category: "run_event",
-      action: transitionTaken ? "Transition Taken" : "Event Dispatched",
-      workflowId: wf.id,
-      workflowName: wf.name,
-      details: transitionTaken
-        ? `Run ${runId} transitioned from '${run.currentStateId}' to '${updatedRun.currentStateId}' via event '${eventName}'.`
-        : `Event '${eventName}' processed for run ${runId} (no state transition).`,
-      severity: transitionTaken ? "success" : "info",
-      isDemo: false,
-    };
-    await this.adapter.appendWorkspaceActivity(activity);
+      const transitionTaken = Boolean(result.transitionTaken);
 
-    const responsePayload = { updatedRun, transitionTaken };
+      const activity: WorkspaceActivity = {
+        id: `act-dispatch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        category: "run_event",
+        action: transitionTaken ? "Transition Taken" : "Event Dispatched",
+        workflowId: wf.id,
+        workflowName: wf.name,
+        details: transitionTaken
+          ? `Run ${runId} transitioned from '${run.currentStateId}' to '${result.updatedRun.currentStateId}' via event '${eventName}'.`
+          : `Event '${eventName}' processed for run ${runId} (no state transition).`,
+        severity: transitionTaken ? "success" : "info",
+        isDemo: false,
+      };
 
-    if (idempotencyKey) {
-      await this.adapter.completeIdempotency(
+      const finalUpdatedRun: WorkflowRun = {
+        ...result.updatedRun,
+        auditTrail: fullAuditTrail,
+      };
+
+      const responsePayload = { updatedRun: finalUpdatedRun, transitionTaken };
+
+      const savedRun = await this.adapter.saveRunAndEventsBatch({
+        run: finalUpdatedRun,
+        newEvents: newEventsSequenced,
+        activity,
         idempotencyKey,
-        responsePayload as unknown as Record<string, unknown>
-      );
-    }
+        idempotencyResponse: responsePayload as unknown as Record<string, unknown>,
+      });
 
-    return { success: true, data: responsePayload };
+      return {
+        success: true,
+        data: { updatedRun: savedRun, transitionTaken },
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, msg);
+      return { success: false, error: msg };
+    }
   }
 
   async saveConnection(
@@ -370,37 +400,43 @@ export class CommandService {
       }
     }
 
-    let status = connection.status;
-    if (status === "available_local" && !connection.id.includes("ollama")) {
-      status = "configured";
+    try {
+      let status = connection.status;
+      if (status === "available_local" && !connection.id.includes("ollama")) {
+        status = "configured";
+      }
+
+      const sanitizedConn: ConnectionCredential = {
+        ...connection,
+        status,
+      };
+
+      const saved = await this.adapter.saveConnection(sanitizedConn);
+
+      const activity: WorkspaceActivity = {
+        id: `act-conn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        category: "connection",
+        action: "Provider Connection Template Configured",
+        details: `Configured template '${saved.name}' (${saved.service}).`,
+        severity: "info",
+        isDemo: false,
+      };
+      await this.adapter.appendWorkspaceActivity(activity);
+
+      if (idempotencyKey) {
+        await this.adapter.completeIdempotency(
+          idempotencyKey,
+          saved as unknown as Record<string, unknown>
+        );
+      }
+
+      return { success: true, data: saved };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, msg);
+      return { success: false, error: msg };
     }
-
-    const sanitizedConn: ConnectionCredential = {
-      ...connection,
-      status,
-    };
-
-    const saved = await this.adapter.saveConnection(sanitizedConn);
-
-    const activity: WorkspaceActivity = {
-      id: `act-conn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString(),
-      category: "connection",
-      action: "Provider Connection Template Configured",
-      details: `Configured template '${saved.name}' (${saved.service}).`,
-      severity: "info",
-      isDemo: false,
-    };
-    await this.adapter.appendWorkspaceActivity(activity);
-
-    if (idempotencyKey) {
-      await this.adapter.completeIdempotency(
-        idempotencyKey,
-        saved as unknown as Record<string, unknown>
-      );
-    }
-
-    return { success: true, data: saved };
   }
 }
 

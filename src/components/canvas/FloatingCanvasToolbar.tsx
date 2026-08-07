@@ -82,6 +82,7 @@ export const FloatingCanvasToolbar: React.FC = () => {
     updateWorkflow(activeWorkflow.id, (draft) => {
       draft.updatedAt = new Date().toISOString();
     });
+    useWorkflowStore.getState().saveWorkflowToDurableStore(activeWorkflow.id);
     showToast("Workflow state machine configuration saved!");
   };
 

@@ -176,8 +176,17 @@ interface WorkflowStateStore {
   // Connections
   addConnection: (conn: ConnectionCredential) => void;
 
-  // Hydration from Durable Persistence (P2.0E)
+  // Hydration & Durable Sync
+  saveWorkflowToDurableStore: (workflowId?: string) => Promise<void>;
   hydrateFromDurableStore: () => Promise<void>;
+}
+
+function isBrowserApiAvailable(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!window.location || !window.location.origin) return false;
+  if (window.location.origin === "null") return false;
+  if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") return false;
+  return true;
 }
 
 export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
@@ -1168,11 +1177,41 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
         metadata: { runId: newRun.id },
       }
     );
+
     set((state) => ({
       activeRuns: [newRun, ...state.activeRuns],
       activityLogs: [runLog, ...(state.activityLogs || [])],
       activeRunId: newRun.id,
     }));
+
+    // Server-authoritative dispatch
+    if (isBrowserApiAvailable()) {
+      const idempKey = `run-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      fetch("/api/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempKey,
+        },
+        body: JSON.stringify({
+          workflowId: wf.id,
+          initialContext: customContext,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (json && json.data) {
+            const serverRun = json.data as WorkflowRun;
+            set((state) => ({
+              activeRuns: state.activeRuns.map((r) => (r.id === newRun.id ? serverRun : r)),
+              activeRunId: serverRun.id,
+            }));
+            get().hydrateFromDurableStore();
+          }
+        })
+        .catch((err) => console.warn("Failed to dispatch createRun to server:", err));
+    }
+
     return newRun;
   },
 
@@ -1206,6 +1245,33 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       activeRuns: state.activeRuns.map((r) => (r.id === runId ? updatedRun : r)),
       activityLogs: [eventLog, ...(state.activityLogs || [])],
     }));
+
+    // Server-authoritative dispatch
+    if (isBrowserApiAvailable()) {
+      const idempKey = `dispatch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      fetch(`/api/runs/${runId}/dispatch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempKey,
+        },
+        body: JSON.stringify({
+          eventName,
+          payload,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (json && json.data && json.data.updatedRun) {
+            const serverRun = json.data.updatedRun as WorkflowRun;
+            set((state) => ({
+              activeRuns: state.activeRuns.map((r) => (r.id === runId ? serverRun : r)),
+            }));
+            get().hydrateFromDurableStore();
+          }
+        })
+        .catch((err) => console.warn("Failed to dispatch event to server:", err));
+    }
   },
 
   setActiveRunId: (runId) => set({ activeRunId: runId }),
@@ -1223,10 +1289,48 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       connections: [...state.connections, conn],
       activityLogs: [connLog, ...(state.activityLogs || [])],
     }));
+
+    if (isBrowserApiAvailable()) {
+      const idempKey = `conn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      fetch("/api/connections", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempKey,
+        },
+        body: JSON.stringify(conn),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then(() => get().hydrateFromDurableStore())
+        .catch((err) => console.warn("Failed to save connection to server:", err));
+    }
+  },
+
+  saveWorkflowToDurableStore: async (workflowId?: string) => {
+    const activeId = workflowId || get().activeWorkflowId;
+    const wf = get().workflows.find((w) => w.id === activeId);
+    if (!wf || !isBrowserApiAvailable()) return;
+
+    try {
+      const idempKey = `save-wf-${activeId}-${Date.now()}`;
+      const res = await fetch("/api/workflows", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempKey,
+        },
+        body: JSON.stringify(wf),
+      });
+      if (res.ok) {
+        await get().hydrateFromDurableStore();
+      }
+    } catch (err) {
+      console.warn("Failed to save workflow to durable store:", err);
+    }
   },
 
   hydrateFromDurableStore: async () => {
-    if (typeof window === "undefined" || !window.location?.origin) return;
+    if (!isBrowserApiAvailable()) return;
     try {
       const [wfRes, runRes, actRes, connRes] = await Promise.all([
         fetch("/api/workflows").then((r) => (r.ok ? r.json() : null)),

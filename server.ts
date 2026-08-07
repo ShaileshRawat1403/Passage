@@ -381,22 +381,28 @@ Return a valid JSON object with risk analysis and recommendation.`,
     });
   }
 
-  // Seed initial workflows into durable persistence if empty
-  try {
-    const { getPersistenceAdapter } = await import("./src/services/persistenceAdapter");
-    const { commandService } = await import("./src/services/commandService");
-    const { sampleWorkflows } = await import("./src/domain/sampleWorkflows");
+  // Seed initial workflows into durable persistence if explicit or if dev mode is empty
+  const shouldSeed =
+    process.env.SEED_SAMPLE_DATA === "true" ||
+    (process.env.SEED_SAMPLE_DATA !== "false" && process.env.NODE_ENV !== "production");
 
-    const adapter = getPersistenceAdapter();
-    const existing = await adapter.getAllWorkflows();
-    if (existing.length === 0) {
-      for (const wf of sampleWorkflows) {
-        await commandService.saveWorkflow(wf);
+  if (shouldSeed) {
+    try {
+      const { getPersistenceAdapter } = await import("./src/services/persistenceAdapter");
+      const { commandService } = await import("./src/services/commandService");
+      const { sampleWorkflows } = await import("./src/domain/sampleWorkflows");
+
+      const adapter = getPersistenceAdapter();
+      const existing = await adapter.getAllWorkflows();
+      if (existing.length === 0) {
+        for (const wf of sampleWorkflows) {
+          await commandService.saveWorkflow(wf);
+        }
+        console.log(`[Stateflow Server] Seeded ${sampleWorkflows.length} sample workflows into durable store.`);
       }
-      console.log(`[Stateflow Server] Seeded ${sampleWorkflows.length} sample workflows into durable store.`);
+    } catch (err) {
+      console.warn("[Stateflow Server] Boot seed notice:", err);
     }
-  } catch (err) {
-    console.warn("[Stateflow Server] Boot seed notice:", err);
   }
 
   app.listen(PORT, "0.0.0.0", () => {

@@ -26,6 +26,14 @@ export interface IdempotencyCheckResult {
   record?: IdempotencyRecord;
 }
 
+export interface SaveRunBatchOptions {
+  run: WorkflowRun;
+  newEvents: AuditEvent[];
+  activity?: WorkspaceActivity;
+  idempotencyKey?: string;
+  idempotencyResponse?: Record<string, unknown>;
+}
+
 export interface IPersistenceAdapter {
   saveWorkflowHead(workflow: WorkflowDefinition): Promise<WorkflowDefinition>;
   getWorkflowHead(workflowId: string): Promise<WorkflowDefinition | null>;
@@ -49,6 +57,8 @@ export interface IPersistenceAdapter {
   appendRunEvent(event: AuditEvent): Promise<AuditEvent>;
   getRunEvents(runId: string): Promise<AuditEvent[]>;
 
+  saveRunAndEventsBatch(options: SaveRunBatchOptions): Promise<WorkflowRun>;
+
   appendWorkspaceActivity(activity: WorkspaceActivity): Promise<WorkspaceActivity>;
   getWorkspaceActivities(): Promise<WorkspaceActivity[]>;
 
@@ -63,6 +73,10 @@ export interface IPersistenceAdapter {
   completeIdempotency(
     key: string,
     response?: Record<string, unknown>
+  ): Promise<void>;
+  failIdempotency(
+    key: string,
+    errorReason: string
   ): Promise<void>;
 }
 
@@ -167,6 +181,12 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   }
 
   async appendRunEvent(event: AuditEvent): Promise<AuditEvent> {
+    const existingEv = this.runEvents.find((e) => e.id === event.id);
+    if (existingEv) {
+      throw new Error(
+        `Run event with ID '${event.id}' already exists and cannot be overwritten (append-only violation).`
+      );
+    }
     const run = this.runs.get(event.workflowRunId);
     const existingRunEvents = this.runEvents.filter(
       (e) => e.workflowRunId === event.workflowRunId
@@ -193,14 +213,52 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     return events.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
   }
 
+  async saveRunAndEventsBatch(options: SaveRunBatchOptions): Promise<WorkflowRun> {
+    const validatedRun = WorkflowRunSchema.parse({
+      ...options.run,
+      lastEventAt: options.run.lastEventAt || new Date().toISOString(),
+    });
+
+    for (const ev of options.newEvents) {
+      const exists = this.runEvents.some((e) => e.id === ev.id);
+      if (exists) {
+        throw new Error(
+          `Run event with ID '${ev.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
+      const validatedEv = RunEventEntitySchema.parse(ev);
+      this.runEvents.push(validatedEv);
+    }
+
+    this.runs.set(validatedRun.id, validatedRun);
+
+    if (options.activity) {
+      const existsAct = this.activities.some((a) => a.id === options.activity!.id);
+      if (existsAct) {
+        throw new Error(
+          `Workspace activity with ID '${options.activity.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
+      const validatedAct = WorkspaceActivityEntitySchema.parse(options.activity);
+      this.activities.unshift(validatedAct);
+    }
+
+    if (options.idempotencyKey) {
+      await this.completeIdempotency(options.idempotencyKey, options.idempotencyResponse);
+    }
+
+    return validatedRun;
+  }
+
   async appendWorkspaceActivity(activity: WorkspaceActivity): Promise<WorkspaceActivity> {
     const validated = WorkspaceActivityEntitySchema.parse(activity);
     const existingIdx = this.activities.findIndex((a) => a.id === validated.id);
     if (existingIdx >= 0) {
-      this.activities[existingIdx] = validated;
-    } else {
-      this.activities.unshift(validated);
+      throw new Error(
+        `Workspace activity with ID '${validated.id}' already exists and cannot be overwritten (append-only violation).`
+      );
     }
+    this.activities.unshift(validated);
     return validated;
   }
 
@@ -230,18 +288,37 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   ): Promise<IdempotencyCheckResult> {
     const existing = this.idempotencyRecords.get(key);
     if (existing) {
-      if (
-        requestHash &&
-        existing.requestHash &&
-        existing.requestHash !== requestHash
-      ) {
-        throw new Error(
-          `Idempotency key conflict: key '${key}' was already used with a different request payload.`
-        );
-      }
       if (existing.status === "completed") {
+        if (
+          requestHash &&
+          existing.requestHash &&
+          existing.requestHash !== requestHash
+        ) {
+          throw new Error(
+            `Idempotency key conflict: key '${key}' was already used with a different request payload.`
+          );
+        }
         return { isDuplicate: true, inProgress: false, record: existing };
       }
+
+      const isStale =
+        existing.status === "pending" &&
+        Date.now() - new Date(existing.createdAt).getTime() > 30000;
+
+      if (existing.status === "failed" || isStale) {
+        const resetRecord: IdempotencyRecord = {
+          ...existing,
+          requestHash,
+          status: "pending",
+          createdAt: new Date().toISOString(),
+          response: undefined,
+          completedAt: undefined,
+        };
+        const validated = IdempotencyRecordSchema.parse(resetRecord);
+        this.idempotencyRecords.set(key, validated);
+        return { isDuplicate: false, inProgress: false, record: validated };
+      }
+
       return { isDuplicate: true, inProgress: true, record: existing };
     }
 
@@ -265,6 +342,16 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     if (existing) {
       existing.status = "completed";
       existing.response = response;
+      existing.completedAt = new Date().toISOString();
+      this.idempotencyRecords.set(key, IdempotencyRecordSchema.parse(existing));
+    }
+  }
+
+  async failIdempotency(key: string, errorReason: string): Promise<void> {
+    const existing = this.idempotencyRecords.get(key);
+    if (existing) {
+      existing.status = "failed";
+      existing.response = { error: errorReason };
       existing.completedAt = new Date().toISOString();
       this.idempotencyRecords.set(key, IdempotencyRecordSchema.parse(existing));
     }
@@ -410,6 +497,13 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
     const eventRef = this.db.collection("run_events").doc(event.id);
 
     return await this.db.runTransaction(async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (eventSnap.exists) {
+        throw new Error(
+          `Run event with ID '${event.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
+
       const runSnap = await transaction.get(runRef);
       let sequence = event.sequence;
       let runData: WorkflowRun | null = null;
@@ -449,10 +543,70 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
     return events.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
   }
 
+  async saveRunAndEventsBatch(options: SaveRunBatchOptions): Promise<WorkflowRun> {
+    const runRef = this.db.collection("workflow_runs").doc(options.run.id);
+
+    return await this.db.runTransaction(async (transaction) => {
+      const validatedRun = WorkflowRunSchema.parse({
+        ...options.run,
+        lastEventAt: options.run.lastEventAt || new Date().toISOString(),
+      });
+
+      for (const ev of options.newEvents) {
+        const eventRef = this.db.collection("run_events").doc(ev.id);
+        const eventSnap = await transaction.get(eventRef);
+        if (eventSnap.exists) {
+          throw new Error(
+            `Run event with ID '${ev.id}' already exists and cannot be overwritten (append-only violation).`
+          );
+        }
+        const validatedEv = RunEventEntitySchema.parse(ev);
+        transaction.set(eventRef, validatedEv);
+      }
+
+      transaction.set(runRef, validatedRun);
+
+      if (options.activity) {
+        const actRef = this.db.collection("workspace_activity").doc(options.activity.id);
+        const actSnap = await transaction.get(actRef);
+        if (actSnap.exists) {
+          throw new Error(
+            `Workspace activity with ID '${options.activity.id}' already exists and cannot be overwritten (append-only violation).`
+          );
+        }
+        const validatedAct = WorkspaceActivityEntitySchema.parse(options.activity);
+        transaction.set(actRef, validatedAct);
+      }
+
+      if (options.idempotencyKey) {
+        const idempRef = this.db.collection("idempotency_records").doc(options.idempotencyKey);
+        const idempSnap = await transaction.get(idempRef);
+        if (idempSnap.exists) {
+          const record = IdempotencyRecordSchema.parse(idempSnap.data());
+          record.status = "completed";
+          record.response = options.idempotencyResponse;
+          record.completedAt = new Date().toISOString();
+          transaction.set(idempRef, record);
+        }
+      }
+
+      return validatedRun;
+    });
+  }
+
   async appendWorkspaceActivity(activity: WorkspaceActivity): Promise<WorkspaceActivity> {
     const validated = WorkspaceActivityEntitySchema.parse(activity);
-    await this.db.collection("workspace_activity").doc(activity.id).set(validated, { merge: true });
-    return validated;
+    const docRef = this.db.collection("workspace_activity").doc(activity.id);
+    return await this.db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (snap.exists) {
+        throw new Error(
+          `Workspace activity with ID '${validated.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
+      transaction.set(docRef, validated);
+      return validated;
+    });
   }
 
   async getWorkspaceActivities(): Promise<WorkspaceActivity[]> {
@@ -488,18 +642,37 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
       const snap = await transaction.get(docRef);
       if (snap.exists) {
         const record = IdempotencyRecordSchema.parse(snap.data());
-        if (
-          requestHash &&
-          record.requestHash &&
-          record.requestHash !== requestHash
-        ) {
-          throw new Error(
-            `Idempotency key conflict: key '${key}' was already used with a different request payload.`
-          );
-        }
         if (record.status === "completed") {
+          if (
+            requestHash &&
+            record.requestHash &&
+            record.requestHash !== requestHash
+          ) {
+            throw new Error(
+              `Idempotency key conflict: key '${key}' was already used with a different request payload.`
+            );
+          }
           return { isDuplicate: true, inProgress: false, record };
         }
+
+        const isStale =
+          record.status === "pending" &&
+          Date.now() - new Date(record.createdAt).getTime() > 30000;
+
+        if (record.status === "failed" || isStale) {
+          const resetRecord: IdempotencyRecord = {
+            ...record,
+            requestHash,
+            status: "pending",
+            createdAt: new Date().toISOString(),
+            response: undefined,
+            completedAt: undefined,
+          };
+          const validated = IdempotencyRecordSchema.parse(resetRecord);
+          transaction.set(docRef, validated);
+          return { isDuplicate: false, inProgress: false, record: validated };
+        }
+
         return { isDuplicate: true, inProgress: true, record };
       }
 
@@ -532,6 +705,20 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
       }
     });
   }
+
+  async failIdempotency(key: string, errorReason: string): Promise<void> {
+    const docRef = this.db.collection("idempotency_records").doc(key);
+    await this.db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (snap.exists) {
+        const record = IdempotencyRecordSchema.parse(snap.data());
+        record.status = "failed";
+        record.response = { error: errorReason };
+        record.completedAt = new Date().toISOString();
+        transaction.set(docRef, record);
+      }
+    });
+  }
 }
 
 /**
@@ -552,6 +739,12 @@ export function getPersistenceAdapter(): IPersistenceAdapter {
   ) {
     persistenceAdapterInstance = new MemoryPersistenceAdapter();
     return persistenceAdapterInstance;
+  }
+
+  if (process.env.NODE_ENV === "production" && backend !== "firestore") {
+    throw new Error(
+      "Configuration Defect: Production environment mandates PERSISTENCE_BACKEND=firestore."
+    );
   }
 
   // Explicit firestore setting or production mode requirement
