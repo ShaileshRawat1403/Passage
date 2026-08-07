@@ -221,9 +221,9 @@ describe("P1.1 Reliable Canvas Editing - Domain Operations & Invariants", () => 
     expect(wfAfter.states.some((s) => s.id === wfAfter.initialStateId)).toBe(true);
   });
 
-  it("11. Canvas edits do not modify an active WorkflowRun", () => {
+  it("11. Canvas edits do not modify an active WorkflowRun", async () => {
     const store = useWorkflowStore.getState();
-    const activeRun = store.startNewRun(testWorkflowId);
+    const activeRun = await store.startNewRun(testWorkflowId);
 
     const runStateBefore = activeRun.currentStateId;
     const runHistoryLengthBefore = activeRun.history.length;

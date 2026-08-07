@@ -179,10 +179,21 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     options: PublishVersionAtomicOptions
   ): Promise<WorkflowDefinition> {
     const versionKey = `${options.workflowId}_v${options.version}`;
+
+    // 1. ALL READS & VALIDATIONS FIRST
     if (this.versions.has(versionKey)) {
       throw new Error(
         `Version '${options.version}' already published for workflow '${options.workflowId}' and is immutable.`
       );
+    }
+
+    if (options.activity) {
+      const existsAct = this.activities.some((a) => a.id === options.activity!.id);
+      if (existsAct) {
+        throw new Error(
+          `Workspace activity with ID '${options.activity.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
     }
 
     const versionEntity: WorkflowVersionEntity = {
@@ -192,6 +203,8 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
       definition: options.definition,
       createdAt: new Date().toISOString(),
     };
+
+    const validatedVersion = WorkflowVersionEntitySchema.parse(versionEntity);
 
     const validatedHead = WorkflowEntitySchema.parse({
       id: options.workflowId,
@@ -204,11 +217,16 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
       updatedAt: new Date().toISOString(),
     });
 
-    this.versions.set(versionKey, WorkflowVersionEntitySchema.parse(versionEntity));
+    const validatedAct = options.activity
+      ? WorkspaceActivityEntitySchema.parse(options.activity)
+      : null;
+
+    // 2. ALL WRITES SECOND
+    this.versions.set(versionKey, validatedVersion);
     this.workflows.set(options.workflowId, validatedHead);
 
-    if (options.activity) {
-      await this.appendWorkspaceActivity(options.activity);
+    if (validatedAct) {
+      this.activities.unshift(validatedAct);
     }
 
     if (options.idempotencyKey) {
@@ -271,6 +289,7 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   }
 
   async saveRunAndEventsBatch(options: SaveRunBatchOptions): Promise<WorkflowRun> {
+    // 1. ALL READS & VALIDATIONS FIRST
     const existingRun = this.runs.get(options.run.id);
     if (existingRun && options.expectedRevision !== undefined) {
       const currentRev = existingRun.revision || 1;
@@ -281,12 +300,7 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
       }
     }
 
-    const validatedRun = WorkflowRunSchema.parse({
-      ...options.run,
-      revision: options.run.revision || (existingRun ? (existingRun.revision || 1) + 1 : 1),
-      lastEventAt: options.run.lastEventAt || new Date().toISOString(),
-    });
-
+    const validatedEvents: AuditEvent[] = [];
     for (const ev of options.newEvents) {
       const exists = this.runEvents.some((e) => e.id === ev.id);
       if (exists) {
@@ -294,12 +308,10 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
           `Run event with ID '${ev.id}' already exists and cannot be overwritten (append-only violation).`
         );
       }
-      const validatedEv = RunEventEntitySchema.parse(ev);
-      this.runEvents.push(validatedEv);
+      validatedEvents.push(RunEventEntitySchema.parse(ev));
     }
 
-    this.runs.set(validatedRun.id, validatedRun);
-
+    let validatedAct = null;
     if (options.activity) {
       const existsAct = this.activities.some((a) => a.id === options.activity!.id);
       if (existsAct) {
@@ -307,7 +319,23 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
           `Workspace activity with ID '${options.activity.id}' already exists and cannot be overwritten (append-only violation).`
         );
       }
-      const validatedAct = WorkspaceActivityEntitySchema.parse(options.activity);
+      validatedAct = WorkspaceActivityEntitySchema.parse(options.activity);
+    }
+
+    const validatedRun = WorkflowRunSchema.parse({
+      ...options.run,
+      revision: options.run.revision || (existingRun ? (existingRun.revision || 1) + 1 : 1),
+      lastEventAt: options.run.lastEventAt || new Date().toISOString(),
+    });
+
+    // 2. ALL WRITES SECOND
+    for (const validatedEv of validatedEvents) {
+      this.runEvents.push(validatedEv);
+    }
+
+    this.runs.set(validatedRun.id, validatedRun);
+
+    if (validatedAct) {
       this.activities.unshift(validatedAct);
     }
 
@@ -444,7 +472,11 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
 export class FirestorePersistenceAdapter implements IPersistenceAdapter {
   private db: AdminFirestore;
 
-  constructor(projectId?: string) {
+  constructor(projectId?: string, customDb?: AdminFirestore) {
+    if (customDb) {
+      this.db = customDb;
+      return;
+    }
     const existingApps = getAdminApps();
     let app: AdminApp;
     if (existingApps.length > 0) {

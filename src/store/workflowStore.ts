@@ -169,12 +169,12 @@ interface WorkflowStateStore {
   runValidation: (workflowId?: string) => ValidationIssue[];
 
   // Simulation & Runtime execution
-  startNewRun: (workflowId: string, customContext?: Record<string, unknown>) => WorkflowRun;
-  dispatchEventToRun: (runId: string, eventName: string, payload?: Record<string, unknown>) => void;
+  startNewRun: (workflowId: string, customContext?: Record<string, unknown>) => Promise<WorkflowRun>;
+  dispatchEventToRun: (runId: string, eventName: string, payload?: Record<string, unknown>) => Promise<void>;
   setActiveRunId: (runId: string | null) => void;
 
   // Connections
-  addConnection: (conn: ConnectionCredential) => void;
+  addConnection: (conn: ConnectionCredential) => Promise<void>;
 
   // Hydration & Durable Sync
   saveWorkflowToDurableStore: (workflowId?: string) => Promise<void>;
@@ -1163,8 +1163,53 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     return issues;
   },
 
-  startNewRun: (workflowId, customContext) => {
+  startNewRun: async (workflowId, customContext) => {
     const wf = get().workflows.find((w) => w.id === workflowId) || vendorInvoiceWorkflow;
+
+    if (isBrowserApiAvailable()) {
+      const idempKey = `run-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const res = await fetch("/api/runs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempKey,
+        },
+        body: JSON.stringify({
+          workflowId: wf.id,
+          initialContext: customContext,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to start run on server (HTTP ${res.status})`);
+      }
+
+      const json = await res.json();
+      if (json && json.data) {
+        const serverRun = json.data as WorkflowRun;
+        const runLog = createActivityEntry(
+          "run_event",
+          "Workflow Simulation Started",
+          `Started case simulation run '${serverRun.id}' for '${wf.name}' on initial state '${serverRun.currentStateId}'.`,
+          {
+            workflowId: wf.id,
+            workflowName: wf.name,
+            severity: "info",
+            metadata: { runId: serverRun.id },
+          }
+        );
+
+        set((state) => ({
+          activeRuns: [serverRun, ...state.activeRuns],
+          activityLogs: [runLog, ...(state.activityLogs || [])],
+          activeRunId: serverRun.id,
+        }));
+        await get().hydrateFromDurableStore();
+        return serverRun;
+      }
+    }
+
     const newRun = createWorkflowRun(wf, customContext);
     const runLog = createActivityEntry(
       "run_event",
@@ -1184,43 +1229,59 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       activeRunId: newRun.id,
     }));
 
-    // Server-authoritative dispatch
+    return newRun;
+  },
+
+  dispatchEventToRun: async (runId, eventName, payload) => {
+    const runs = get().activeRuns;
+    const run = runs.find((r) => r.id === runId);
+    if (!run) return;
+
+    const wf = get().workflows.find((w) => w.id === run.workflowId) || vendorInvoiceWorkflow;
+
     if (isBrowserApiAvailable()) {
-      const idempKey = `run-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      fetch("/api/runs", {
+      const idempKey = `dispatch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const res = await fetch(`/api/runs/${runId}/dispatch`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-idempotency-key": idempKey,
         },
         body: JSON.stringify({
-          workflowId: wf.id,
-          initialContext: customContext,
+          eventName,
+          payload,
         }),
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((json) => {
-          if (json && json.data) {
-            const serverRun = json.data as WorkflowRun;
-            set((state) => ({
-              activeRuns: state.activeRuns.map((r) => (r.id === newRun.id ? serverRun : r)),
-              activeRunId: serverRun.id,
-            }));
-            get().hydrateFromDurableStore();
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to dispatch event on server (HTTP ${res.status})`);
+      }
+
+      const json = await res.json();
+      if (json && json.data && json.data.updatedRun) {
+        const serverRun = json.data.updatedRun as WorkflowRun;
+        const eventLog = createActivityEntry(
+          "run_event",
+          "Event Dispatched to Simulation",
+          `Dispatched '${eventName}' on run '${runId}' (${wf.name}). Current state: '${serverRun.currentStateId}'.`,
+          {
+            workflowId: wf.id,
+            workflowName: wf.name,
+            severity: serverRun.status === "failed" ? "error" : "info",
+            metadata: { runId, eventName },
           }
-        })
-        .catch((err) => console.warn("Failed to dispatch createRun to server:", err));
+        );
+
+        set((state) => ({
+          activeRuns: state.activeRuns.map((r) => (r.id === runId ? serverRun : r)),
+          activityLogs: [eventLog, ...(state.activityLogs || [])],
+        }));
+        await get().hydrateFromDurableStore();
+        return;
+      }
     }
 
-    return newRun;
-  },
-
-  dispatchEventToRun: (runId, eventName, payload) => {
-    const runs = get().activeRuns;
-    const run = runs.find((r) => r.id === runId);
-    if (!run) return;
-
-    const wf = get().workflows.find((w) => w.id === run.workflowId) || vendorInvoiceWorkflow;
     const { updatedRun } = dispatchWorkflowEvent(wf, run, {
       id: `EVT-${Date.now()}`,
       type: eventName,
@@ -1245,38 +1306,44 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       activeRuns: state.activeRuns.map((r) => (r.id === runId ? updatedRun : r)),
       activityLogs: [eventLog, ...(state.activityLogs || [])],
     }));
+  },
 
-    // Server-authoritative dispatch
+  setActiveRunId: (runId) => set({ activeRunId: runId }),
+
+  addConnection: async (conn) => {
     if (isBrowserApiAvailable()) {
-      const idempKey = `dispatch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      fetch(`/api/runs/${runId}/dispatch`, {
+      const idempKey = `conn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const res = await fetch("/api/connections", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-idempotency-key": idempKey,
         },
-        body: JSON.stringify({
-          eventName,
-          payload,
-        }),
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((json) => {
-          if (json && json.data && json.data.updatedRun) {
-            const serverRun = json.data.updatedRun as WorkflowRun;
-            set((state) => ({
-              activeRuns: state.activeRuns.map((r) => (r.id === runId ? serverRun : r)),
-            }));
-            get().hydrateFromDurableStore();
-          }
-        })
-        .catch((err) => console.warn("Failed to dispatch event to server:", err));
+        body: JSON.stringify(conn),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to save connection to server (HTTP ${res.status})`);
+      }
+
+      const connLog = createActivityEntry(
+        "connection",
+        "Connection Credential Configured",
+        `Configured integration credential '${conn.name}' (${conn.service}).`,
+        {
+          severity: "info",
+        }
+      );
+
+      set((state) => ({
+        connections: [...state.connections, conn],
+        activityLogs: [connLog, ...(state.activityLogs || [])],
+      }));
+      await get().hydrateFromDurableStore();
+      return;
     }
-  },
 
-  setActiveRunId: (runId) => set({ activeRunId: runId }),
-
-  addConnection: (conn) => {
     const connLog = createActivityEntry(
       "connection",
       "Connection Credential Configured",
@@ -1289,21 +1356,6 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       connections: [...state.connections, conn],
       activityLogs: [connLog, ...(state.activityLogs || [])],
     }));
-
-    if (isBrowserApiAvailable()) {
-      const idempKey = `conn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      fetch("/api/connections", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-idempotency-key": idempKey,
-        },
-        body: JSON.stringify(conn),
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then(() => get().hydrateFromDurableStore())
-        .catch((err) => console.warn("Failed to save connection to server:", err));
-    }
   },
 
   saveWorkflowToDurableStore: async (workflowId?: string) => {
@@ -1346,6 +1398,8 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
           if (!exists && wfRes.workflows[0]) {
             updates.activeWorkflowId = wfRes.workflows[0].id;
           }
+        } else {
+          updates.activeWorkflowId = "";
         }
       }
       if (runRes && Array.isArray(runRes.runs)) {

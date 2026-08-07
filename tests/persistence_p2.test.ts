@@ -1,8 +1,106 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { MemoryPersistenceAdapter } from "../src/services/persistenceAdapter";
+import { MemoryPersistenceAdapter, FirestorePersistenceAdapter } from "../src/services/persistenceAdapter";
 import { CommandService } from "../src/services/commandService";
 import { sampleWorkflows } from "../src/domain/sampleWorkflows";
 import { WorkflowDefinition, ConnectionCredential } from "../src/types/workflow";
+
+function createMockFirestoreDatabase() {
+  const store: Record<string, Map<string, any>> = {};
+
+  const getCollection = (colName: string) => {
+    if (!store[colName]) store[colName] = new Map();
+    return store[colName]!;
+  };
+
+  const createDocRef = (colName: string, docId: string) => ({
+    colName,
+    docId,
+    get: async () => {
+      const col = getCollection(colName);
+      const data = col.get(docId);
+      return {
+        exists: data !== undefined,
+        id: docId,
+        data: () => (data ? JSON.parse(JSON.stringify(data)) : undefined),
+      };
+    },
+    set: async (data: any) => {
+      const col = getCollection(colName);
+      col.set(docId, JSON.parse(JSON.stringify(data)));
+    },
+    delete: async () => {
+      const col = getCollection(colName);
+      col.delete(docId);
+    },
+  });
+
+  const db: any = {
+    collection: (colName: string) => {
+      const col = getCollection(colName);
+      
+      const createQuery = (items: Array<[string, any]>) => ({
+        where: (field: string, op: string, val: any) => {
+          const filtered = items.filter(([_, data]) => {
+            if (op === "==") return data[field] === val;
+            return true;
+          });
+          return createQuery(filtered);
+        },
+        orderBy: (field: string, dir: "asc" | "desc" = "asc") => {
+          const sorted = [...items].sort((a, b) => {
+            if (a[1][field] < b[1][field]) return dir === "asc" ? -1 : 1;
+            if (a[1][field] > b[1][field]) return dir === "asc" ? 1 : -1;
+            return 0;
+          });
+          return createQuery(sorted);
+        },
+        limit: (n: number) => {
+          return createQuery(items.slice(0, n));
+        },
+        doc: (docId: string) => createDocRef(colName, docId),
+        get: async () => {
+          const docs = items.map(([id, data]) => ({
+            id,
+            exists: true,
+            data: () => JSON.parse(JSON.stringify(data)),
+          }));
+          return { docs };
+        },
+      });
+
+      return createQuery(Array.from(col.entries()));
+    },
+    runTransaction: async (updateFunction: (transaction: any) => Promise<any>) => {
+      const pendingSets: Array<{ colName: string; docId: string; data: any }> = [];
+      const pendingDeletes: Array<{ colName: string; docId: string }> = [];
+
+      const transaction = {
+        get: async (docRef: any) => {
+          return await docRef.get();
+        },
+        set: (docRef: any, data: any) => {
+          pendingSets.push({ colName: docRef.colName, docId: docRef.docId, data });
+        },
+        delete: (docRef: any) => {
+          pendingDeletes.push({ colName: docRef.colName, docId: docRef.docId });
+        },
+      };
+
+      const result = await updateFunction(transaction);
+
+      for (const del of pendingDeletes) {
+        getCollection(del.colName).delete(del.docId);
+      }
+      for (const item of pendingSets) {
+        getCollection(item.colName).set(item.docId, JSON.parse(JSON.stringify(item.data)));
+      }
+
+      return result;
+    },
+  };
+
+  return db;
+}
 
 describe("P2.0 Durable Runtime Spine - Persistence, Idempotency & Events", () => {
   let adapter: MemoryPersistenceAdapter;
@@ -277,6 +375,67 @@ describe("P2.0 Durable Runtime Spine - Persistence, Idempotency & Events", () =>
       );
       expect(duplicateRes.success).toBe(true);
       expect(duplicateRes.isDuplicate).toBe(true);
+    });
+
+    it("proves state, event, sequence, and idempotency continuity across complete Firestore adapter destruction and restart", async () => {
+      const sharedFirestoreDb = createMockFirestoreDatabase();
+
+      // Create Firestore Persistence Adapter A
+      const firestoreAdapterA = new FirestorePersistenceAdapter(undefined, sharedFirestoreDb);
+      const firestoreCmdServiceA = new CommandService();
+      (firestoreCmdServiceA as any).adapter = firestoreAdapterA;
+
+      await firestoreCmdServiceA.saveWorkflow(sampleWf);
+      const runRes = await firestoreCmdServiceA.createRun(sampleWf.id, "CASE-FS-RESTART-1");
+      expect(runRes.success).toBe(true);
+      const run = runRes.data!;
+
+      const idempKey = "fs-idemp-restart-key-1";
+      const dispatchRes = await firestoreCmdServiceA.dispatchRunEvent(
+        run.id,
+        "SUBMIT_APPROVAL",
+        { invoiceAmount: 2500 },
+        idempKey
+      );
+      expect(dispatchRes.success).toBe(true);
+
+      // Destroy Firestore Adapter A and Command Service A
+      let firestoreAdapterA_ref: any = firestoreAdapterA;
+      let firestoreCmdServiceA_ref: any = firestoreCmdServiceA;
+      firestoreAdapterA_ref = null;
+      firestoreCmdServiceA_ref = null;
+      expect(firestoreAdapterA_ref).toBeNull();
+      expect(firestoreCmdServiceA_ref).toBeNull();
+
+      // Instantiate Firestore Persistence Adapter B connected to same underlying database
+      const firestoreAdapterB = new FirestorePersistenceAdapter(undefined, sharedFirestoreDb);
+      const firestoreCmdServiceB = new CommandService();
+      (firestoreCmdServiceB as any).adapter = firestoreAdapterB;
+
+      // Verify reloaded run state & revision
+      const reloadedRun = await firestoreAdapterB.getWorkflowRun(run.id);
+      expect(reloadedRun).not.toBeNull();
+      expect(reloadedRun?.id).toBe(run.id);
+      expect(reloadedRun?.revision).toBe(2);
+      expect(reloadedRun?.caseId).toBe("CASE-FS-RESTART-1");
+
+      // Verify ordered events and monotonic sequence numbers
+      const reloadedEvents = await firestoreAdapterB.getRunEvents(run.id);
+      expect(reloadedEvents.length).toBe(reloadedRun!.auditTrail.length);
+      for (let i = 0; i < reloadedEvents.length; i++) {
+        expect(reloadedEvents[i]?.sequence).toBe(i + 1);
+      }
+
+      // Replay same idempotency key on Adapter B -> returns exact cached duplicate result
+      const duplicateRes = await firestoreCmdServiceB.dispatchRunEvent(
+        run.id,
+        "SUBMIT_APPROVAL",
+        { invoiceAmount: 2500 },
+        idempKey
+      );
+      expect(duplicateRes.success).toBe(true);
+      expect(duplicateRes.isDuplicate).toBe(true);
+      expect(duplicateRes.data?.updatedRun.currentStateId).toBe(reloadedRun?.currentStateId);
     });
   });
 
