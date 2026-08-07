@@ -9,17 +9,25 @@ import {
   LlmRequest,
   LlmResponse,
   ProviderError,
+  sanitizeProviderError,
 } from "../../domain/providers";
 
 export class OpenAICompatibleAdapter implements LlmProvider {
   readonly kind: ProviderKind = "openai_compatible";
 
   private getClient(config: ResolvedProviderConfig): OpenAI {
-    const baseUrl = config.baseUrl || "https://api.openai.com/v1";
+    if (!config.baseUrl) {
+      throw new ProviderError({
+        message: "Base URL is required for OpenAI-compatible provider endpoints. Zero network calls permitted without explicit baseUrl.",
+        code: "INVALID_REQUEST",
+        provider: "openai_compatible",
+        statusCode: 400,
+      });
+    }
 
     return new OpenAI({
       apiKey: config.apiKey || "dummy-key",
-      baseURL: baseUrl,
+      baseURL: config.baseUrl,
     });
   }
 
@@ -174,51 +182,7 @@ export class OpenAICompatibleAdapter implements LlmProvider {
     }
   }
 
-  private normalizeError(err: unknown): ProviderError {
-    const msg = err instanceof Error ? err.message : String(err);
-    const lower = msg.toLowerCase();
-
-    if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("api key")) {
-      return new ProviderError({
-        message: `OpenAI-Compatible Auth Error: ${msg}`,
-        code: "AUTHENTICATION_FAILED",
-        provider: "openai_compatible",
-        statusCode: 401,
-      });
-    }
-
-    if (lower.includes("404") || lower.includes("not found")) {
-      return new ProviderError({
-        message: `OpenAI-Compatible Model/Endpoint Not Found: ${msg}`,
-        code: "MODEL_NOT_FOUND",
-        provider: "openai_compatible",
-        statusCode: 404,
-      });
-    }
-
-    if (lower.includes("429") || lower.includes("rate limit")) {
-      return new ProviderError({
-        message: `OpenAI-Compatible Rate Limited: ${msg}`,
-        code: "RATE_LIMITED",
-        provider: "openai_compatible",
-        retryable: true,
-        statusCode: 429,
-      });
-    }
-
-    if (lower.includes("econnrefused") || lower.includes("unreachable") || lower.includes("fetch failed")) {
-      return new ProviderError({
-        message: `OpenAI-Compatible Endpoint Unreachable: ${msg}`,
-        code: "PROVIDER_UNREACHABLE",
-        provider: "openai_compatible",
-        retryable: true,
-      });
-    }
-
-    return new ProviderError({
-      message: `OpenAI-Compatible Provider Error: ${msg}`,
-      code: "PROVIDER_ERROR",
-      provider: "openai_compatible",
-    });
+  private normalizeError(err: unknown, config?: ResolvedProviderConfig): ProviderError {
+    return sanitizeProviderError(err, "openai_compatible", [config?.apiKey]);
   }
 }

@@ -8,6 +8,7 @@ import {
   LlmRequest,
   LlmResponse,
   ProviderError,
+  sanitizeProviderError,
 } from "../../domain/providers";
 
 export class OllamaAdapter implements LlmProvider {
@@ -215,31 +216,6 @@ export class OllamaAdapter implements LlmProvider {
   }
 
   private normalizeError(err: unknown, baseUrl: string): ProviderError {
-    const msg = err instanceof Error ? err.message : String(err);
-    const lower = msg.toLowerCase();
-
-    if (lower.includes("fetch failed") || lower.includes("econnrefused") || lower.includes("unreachable")) {
-      return new ProviderError({
-        message: `Ollama service unreachable at ${baseUrl}: ${msg}`,
-        code: "PROVIDER_UNREACHABLE",
-        provider: "ollama",
-        retryable: true,
-      });
-    }
-
-    if (lower.includes("not found") || lower.includes("404")) {
-      return new ProviderError({
-        message: `Ollama Model or Endpoint Not Found: ${msg}`,
-        code: "MODEL_NOT_FOUND",
-        provider: "ollama",
-        statusCode: 404,
-      });
-    }
-
-    return new ProviderError({
-      message: `Ollama Provider Error: ${msg}`,
-      code: "PROVIDER_ERROR",
-      provider: "ollama",
-    });
+    return sanitizeProviderError(err, "ollama");
   }
 }

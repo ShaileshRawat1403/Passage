@@ -9,6 +9,7 @@ import {
   LlmRequest,
   LlmResponse,
   ProviderError,
+  sanitizeProviderError,
 } from "../../domain/providers";
 
 export class OpenAIAdapter implements LlmProvider {
@@ -185,52 +186,7 @@ export class OpenAIAdapter implements LlmProvider {
     }
   }
 
-  private normalizeError(err: unknown): ProviderError {
-    const msg = err instanceof Error ? err.message : String(err);
-    const lower = msg.toLowerCase();
-
-    if (lower.includes("incorrect api key") || lower.includes("401") || lower.includes("invalid_api_key")) {
-      return new ProviderError({
-        message: `OpenAI Authentication Error: ${msg}`,
-        code: "AUTHENTICATION_FAILED",
-        provider: "openai",
-        statusCode: 401,
-      });
-    }
-
-    if (lower.includes("404") || lower.includes("model_not_found")) {
-      return new ProviderError({
-        message: `OpenAI Model Not Found: ${msg}`,
-        code: "MODEL_NOT_FOUND",
-        provider: "openai",
-        statusCode: 404,
-      });
-    }
-
-    if (lower.includes("429") || lower.includes("rate limit") || lower.includes("quota")) {
-      return new ProviderError({
-        message: `OpenAI Rate Limited: ${msg}`,
-        code: "RATE_LIMITED",
-        provider: "openai",
-        retryable: true,
-        statusCode: 429,
-      });
-    }
-
-    if (lower.includes("timeout") || lower.includes("etimedout")) {
-      return new ProviderError({
-        message: `OpenAI Request Timeout: ${msg}`,
-        code: "TIMEOUT",
-        provider: "openai",
-        retryable: true,
-        statusCode: 408,
-      });
-    }
-
-    return new ProviderError({
-      message: `OpenAI Provider Error: ${msg}`,
-      code: "PROVIDER_ERROR",
-      provider: "openai",
-    });
+  private normalizeError(err: unknown, config?: ResolvedProviderConfig): ProviderError {
+    return sanitizeProviderError(err, "openai", [config?.apiKey]);
   }
 }

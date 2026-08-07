@@ -323,9 +323,111 @@ describe("P2.1 Provider Adapter Layer Test Suite", () => {
       expect(resolved.provider).toBe("gemini");
       expect(resolved.apiKey).toBe("valid-gemini-key");
     });
+
+    it("Resolves UI-created Connections correctly (OpenAI, Ollama, OpenRouter)", async () => {
+      const registry = new ProviderRegistry(mockSecretResolver);
+
+      // UI-created OpenAI connection
+      const uiOpenAI = {
+        id: "ui-openai-1",
+        name: "OpenAI UI",
+        type: "api_key" as const,
+        service: "https://api.openai.com/v1",
+        providerId: "openai",
+        apiKeyEnvVar: "TEST_OPENAI_KEY",
+      };
+
+      const resOpenAI = await registry.resolveConfig(uiOpenAI as any);
+      expect(resOpenAI.provider).toBe("openai");
+      expect(resOpenAI.baseUrl).toBe("https://api.openai.com/v1");
+      expect(resOpenAI.apiKey).toBe("valid-openai-key");
+
+      // UI-created Ollama connection
+      const uiOllama = {
+        id: "ui-ollama-1",
+        name: "Ollama UI",
+        type: "api_key" as const,
+        service: "http://localhost:11434",
+        providerId: "ollama",
+      };
+
+      const resOllama = await registry.resolveConfig(uiOllama as any);
+      expect(resOllama.provider).toBe("ollama");
+      expect(resOllama.baseUrl).toBe("http://localhost:11434");
+
+      // UI-created OpenRouter connection
+      const uiOpenRouter = {
+        id: "ui-openrouter-1",
+        name: "OpenRouter UI",
+        type: "api_key" as const,
+        service: "https://openrouter.ai/api/v1",
+        providerId: "openrouter",
+      };
+
+      const resOpenRouter = await registry.resolveConfig(uiOpenRouter as any);
+      expect(resOpenRouter.provider).toBe("openai_compatible");
+      expect(resOpenRouter.baseUrl).toBe("https://openrouter.ai/api/v1");
+    });
   });
 
-  describe("7. Runtime Workflow Isolation & No-Fake-Success", () => {
+  describe("7. Security, Enforcement & Fail-Closed Boundaries", () => {
+    it("OpenAICompatibleAdapter fails closed when baseUrl is missing", async () => {
+      const adapter = new OpenAICompatibleAdapter();
+      const config = {
+        connectionId: "conn-no-base",
+        provider: "openai_compatible" as const,
+        apiKey: "some-key",
+      };
+
+      await expect(
+        adapter.generate(config, {
+          model: "gpt-4o",
+          messages: [{ role: "user", content: "hi" }],
+        })
+      ).rejects.toThrowError(ProviderError);
+
+      try {
+        await adapter.generate(config, {
+          model: "gpt-4o",
+          messages: [{ role: "user", content: "hi" }],
+        });
+      } catch (err: any) {
+        expect(err.code).toBe("INVALID_REQUEST");
+        expect(err.message).toContain("Base URL is required");
+      }
+    });
+
+    it("Redacts secret API keys from error messages", async () => {
+      const { sanitizeProviderError } = await import("../src/domain/providers");
+      const secret = "sk-proj-1234567890abcdef12345678";
+      const rawError = new Error(`Connection failed using API key: ${secret}`);
+
+      const sanitized = sanitizeProviderError(rawError, "openai", [secret]);
+      expect(sanitized.message).not.toContain(secret);
+      expect(sanitized.message).toContain("[REDACTED_SECRET]");
+    });
+
+    it("ProviderRegistry enforces Zod request validation", async () => {
+      const registry = new ProviderRegistry(mockSecretResolver);
+      const conn = {
+        id: "conn-1",
+        name: "Test Conn",
+        provider: "gemini" as const,
+        auth: { mode: "none" as const },
+        status: "configured" as const,
+      };
+
+      // Invalid empty model
+      await expect(
+        registry.generate(conn, {
+          model: "",
+          messages: [{ role: "user", content: "hi" }],
+        })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("8. Runtime Workflow Isolation & No-Fake-Success", () => {
     it("Provider operations never mutate workflow runs or persistence state", async () => {
       const registry = new ProviderRegistry(mockSecretResolver);
       const conn = {

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { LlmProvider } from "./provider";
 import { GeminiAdapter } from "./geminiAdapter";
 import { OpenAIAdapter } from "./openaiAdapter";
@@ -8,12 +9,18 @@ import {
   ProviderKind,
   ResolvedProviderConfig,
   ProviderHealth,
+  ProviderHealthSchema,
   ProviderCapabilities,
+  ProviderCapabilitiesSchema,
   ModelDescriptor,
+  ModelDescriptorSchema,
   LlmRequest,
+  LlmRequestSchema,
   LlmResponse,
+  LlmResponseSchema,
   ProviderError,
   ProviderConnection,
+  sanitizeProviderError,
 } from "../../domain/providers";
 import { ConnectionCredential } from "../../types/workflow";
 
@@ -53,31 +60,70 @@ export class ProviderRegistry {
     const resolver = secretResolver || this.defaultSecretResolver;
     let kind: ProviderKind = "gemini";
 
-    // Determine provider kind
+    // 1. Determine provider kind from ProviderConnection shape or ConnectionCredential shape
     if ("provider" in connection && connection.provider) {
-      kind = connection.provider;
-    } else if ("service" in connection) {
-      const s = connection.service;
-      if (s === "openai") kind = "openai";
-      else if (s === "gemini") kind = "gemini";
-      else if (s === "custom_http" || (s as string) === "openai_compatible") kind = "openai_compatible";
-      else if ((s as string) === "ollama") kind = "ollama";
-      else kind = "gemini";
+      const p = connection.provider;
+      if (p === "gemini" || p === "openai" || p === "openai_compatible" || p === "ollama") {
+        kind = p;
+      }
+    } else {
+      const providerId = "providerId" in connection ? (connection as any).providerId : undefined;
+      const service = "service" in connection ? (connection as any).service : undefined;
+
+      const candidateStr = `${providerId || ""} ${service || ""}`.toLowerCase();
+
+      if (candidateStr.includes("ollama")) {
+        kind = "ollama";
+      } else if (
+        candidateStr.includes("openai_compatible") ||
+        candidateStr.includes("openrouter") ||
+        candidateStr.includes("custom_http") ||
+        candidateStr.includes("groq") ||
+        candidateStr.includes("together") ||
+        candidateStr.includes("vllm") ||
+        candidateStr.includes("lmstudio")
+      ) {
+        kind = "openai_compatible";
+      } else if (candidateStr.includes("openai")) {
+        kind = "openai";
+      } else if (candidateStr.includes("gemini")) {
+        kind = "gemini";
+      } else if (service && typeof service === "string" && (service.startsWith("http://") || service.startsWith("https://"))) {
+        if (service.includes("11434") || service.includes("ollama")) {
+          kind = "ollama";
+        } else if (service.includes("api.openai.com")) {
+          kind = "openai";
+        } else {
+          kind = "openai_compatible";
+        }
+      }
     }
 
+    // 2. Determine baseUrl
+    let baseUrl: string | undefined = undefined;
+    if ("baseUrl" in connection && typeof connection.baseUrl === "string" && connection.baseUrl) {
+      baseUrl = connection.baseUrl;
+    } else if (
+      "service" in connection &&
+      typeof connection.service === "string" &&
+      (connection.service.startsWith("http://") || connection.service.startsWith("https://"))
+    ) {
+      baseUrl = connection.service;
+    }
+
+    // 3. Determine secretRef
     let secretRef = "";
     if ("auth" in connection && connection.auth) {
       if (connection.auth.mode === "secret_ref") {
         secretRef = connection.auth.secretRef;
       }
-    } else if ("apiKeyEnvVar" in connection && typeof connection.apiKeyEnvVar === "string") {
+    } else if ("apiKeyEnvVar" in connection && typeof connection.apiKeyEnvVar === "string" && connection.apiKeyEnvVar) {
       secretRef = connection.apiKeyEnvVar;
     } else {
       secretRef = `${kind.toUpperCase()}_API_KEY`;
     }
 
     const apiKey = secretRef ? await resolver.resolveSecret(secretRef) : undefined;
-    const baseUrl = "baseUrl" in connection ? connection.baseUrl : undefined;
 
     return {
       connectionId: connection.id,
@@ -94,7 +140,19 @@ export class ProviderRegistry {
   ): Promise<ProviderHealth> {
     const config = await this.resolveConfig(connection, secretResolver);
     const provider = this.getProvider(config.provider);
-    return await provider.testConnection(config);
+    try {
+      const res = await provider.testConnection(config);
+      return ProviderHealthSchema.parse(res);
+    } catch (err: unknown) {
+      const sanitized = sanitizeProviderError(err, config.provider, [config.apiKey]);
+      return {
+        status: sanitized.code === "AUTHENTICATION_FAILED" ? "authentication_failed" : "unreachable",
+        checkedAt: new Date().toISOString(),
+        provider: config.provider,
+        resolvedBaseUrl: config.baseUrl,
+        message: sanitized.message,
+      };
+    }
   }
 
   async getCapabilities(
@@ -103,7 +161,8 @@ export class ProviderRegistry {
   ): Promise<ProviderCapabilities> {
     const config = await this.resolveConfig(connection, secretResolver);
     const provider = this.getProvider(config.provider);
-    return await provider.getCapabilities(config);
+    const caps = await provider.getCapabilities(config);
+    return ProviderCapabilitiesSchema.parse(caps);
   }
 
   async listModels(
@@ -112,7 +171,8 @@ export class ProviderRegistry {
   ): Promise<ModelDescriptor[]> {
     const config = await this.resolveConfig(connection, secretResolver);
     const provider = this.getProvider(config.provider);
-    return await provider.listModels(config);
+    const models = await provider.listModels(config);
+    return z.array(ModelDescriptorSchema).parse(models);
   }
 
   async generate(
@@ -120,9 +180,19 @@ export class ProviderRegistry {
     request: LlmRequest,
     secretResolver?: SecretResolver
   ): Promise<LlmResponse> {
+    // Enforcement: Zod validation on incoming request
+    const validatedRequest = LlmRequestSchema.parse(request);
+
     const config = await this.resolveConfig(connection, secretResolver);
     const provider = this.getProvider(config.provider);
-    return await provider.generate(config, request);
+
+    try {
+      const rawResponse = await provider.generate(config, validatedRequest);
+      // Enforcement: Zod validation on outgoing response
+      return LlmResponseSchema.parse(rawResponse);
+    } catch (err: unknown) {
+      throw sanitizeProviderError(err, config.provider, [config.apiKey]);
+    }
   }
 }
 

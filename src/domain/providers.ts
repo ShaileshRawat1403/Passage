@@ -207,6 +207,82 @@ export class ProviderError extends Error {
   }
 }
 
+export function sanitizeProviderError(
+  err: unknown,
+  provider: ProviderKind,
+  secretsToRedact?: (string | undefined)[]
+): ProviderError {
+  let message = err instanceof Error ? err.message : String(err);
+
+  if (secretsToRedact) {
+    for (const secret of secretsToRedact) {
+      if (secret && secret.length > 3) {
+        message = message.split(secret).join("[REDACTED_SECRET]");
+      }
+    }
+  }
+
+  // Redact common API key formats (e.g. OpenAI sk-..., Gemini AIzaSy...)
+  message = message.replace(/sk-[a-zA-Z0-9_-]{16,}/g, "[REDACTED_SECRET]");
+  message = message.replace(/AIzaSy[a-zA-Z0-9_-]{33}/g, "[REDACTED_SECRET]");
+
+  if (err instanceof ProviderError) {
+    err.message = message;
+    return err;
+  }
+
+  const lower = message.toLowerCase();
+  let code: ProviderErrorCode = "PROVIDER_ERROR";
+  let retryable = false;
+  let statusCode: number | undefined = undefined;
+
+  if (
+    lower.includes("api key") ||
+    lower.includes("unauthorized") ||
+    lower.includes("401") ||
+    lower.includes("invalid_api_key") ||
+    lower.includes("forbidden")
+  ) {
+    code = "AUTHENTICATION_FAILED";
+    statusCode = 401;
+  } else if (lower.includes("404") || lower.includes("not found")) {
+    code = "MODEL_NOT_FOUND";
+    statusCode = 404;
+  } else if (lower.includes("429") || lower.includes("rate limit") || lower.includes("quota")) {
+    code = "RATE_LIMITED";
+    retryable = true;
+    statusCode = 429;
+  } else if (
+    lower.includes("timeout") ||
+    lower.includes("etimedout") ||
+    lower.includes("deadline")
+  ) {
+    code = "TIMEOUT";
+    retryable = true;
+    statusCode = 408;
+  } else if (
+    lower.includes("econnrefused") ||
+    lower.includes("unreachable") ||
+    lower.includes("fetch failed")
+  ) {
+    code = "PROVIDER_UNREACHABLE";
+    retryable = true;
+  }
+
+  const prefix =
+    code === "PROVIDER_UNREACHABLE"
+      ? `${provider.toUpperCase()} service unreachable:`
+      : `${provider.toUpperCase()} Error:`;
+
+  return new ProviderError({
+    message: `${prefix} ${message}`,
+    code,
+    provider,
+    retryable,
+    statusCode,
+  });
+}
+
 export interface ProviderConnection {
   id: string;
   name: string;

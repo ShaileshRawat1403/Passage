@@ -9,6 +9,7 @@ import {
   LlmRequest,
   LlmResponse,
   ProviderError,
+  sanitizeProviderError,
 } from "../../domain/providers";
 
 export class GeminiAdapter implements LlmProvider {
@@ -191,52 +192,7 @@ export class GeminiAdapter implements LlmProvider {
     }
   }
 
-  private normalizeError(err: unknown): ProviderError {
-    const msg = err instanceof Error ? err.message : String(err);
-    const lower = msg.toLowerCase();
-
-    if (lower.includes("api key") || lower.includes("unauthorized") || lower.includes("401") || lower.includes("forbidden")) {
-      return new ProviderError({
-        message: `Gemini Authentication Error: ${msg}`,
-        code: "AUTHENTICATION_FAILED",
-        provider: "gemini",
-        statusCode: 401,
-      });
-    }
-
-    if (lower.includes("404") || lower.includes("not found")) {
-      return new ProviderError({
-        message: `Gemini Model Not Found: ${msg}`,
-        code: "MODEL_NOT_FOUND",
-        provider: "gemini",
-        statusCode: 404,
-      });
-    }
-
-    if (lower.includes("429") || lower.includes("quota") || lower.includes("rate limit")) {
-      return new ProviderError({
-        message: `Gemini Rate Limited: ${msg}`,
-        code: "RATE_LIMITED",
-        provider: "gemini",
-        retryable: true,
-        statusCode: 429,
-      });
-    }
-
-    if (lower.includes("timeout") || lower.includes("etimedout") || lower.includes("deadline")) {
-      return new ProviderError({
-        message: `Gemini Request Timeout: ${msg}`,
-        code: "TIMEOUT",
-        provider: "gemini",
-        retryable: true,
-        statusCode: 408,
-      });
-    }
-
-    return new ProviderError({
-      message: `Gemini Provider Error: ${msg}`,
-      code: "PROVIDER_ERROR",
-      provider: "gemini",
-    });
+  private normalizeError(err: unknown, config?: ResolvedProviderConfig): ProviderError {
+    return sanitizeProviderError(err, "gemini", [config?.apiKey]);
   }
 }
