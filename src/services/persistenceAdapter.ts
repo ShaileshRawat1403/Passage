@@ -300,8 +300,13 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
       }
     }
 
+    const batchIds = new Set<string>();
     const validatedEvents: AuditEvent[] = [];
     for (const ev of options.newEvents) {
+      if (batchIds.has(ev.id)) {
+        throw new Error(`Duplicate event ID '${ev.id}' within batch.`);
+      }
+      batchIds.add(ev.id);
       const exists = this.runEvents.some((e) => e.id === ev.id);
       if (exists) {
         throw new Error(

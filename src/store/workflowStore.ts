@@ -1186,28 +1186,29 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       }
 
       const json = await res.json();
-      if (json && json.data) {
-        const serverRun = json.data as WorkflowRun;
-        const runLog = createActivityEntry(
-          "run_event",
-          "Workflow Simulation Started",
-          `Started case simulation run '${serverRun.id}' for '${wf.name}' on initial state '${serverRun.currentStateId}'.`,
-          {
-            workflowId: wf.id,
-            workflowName: wf.name,
-            severity: "info",
-            metadata: { runId: serverRun.id },
-          }
-        );
-
-        set((state) => ({
-          activeRuns: [serverRun, ...state.activeRuns],
-          activityLogs: [runLog, ...(state.activityLogs || [])],
-          activeRunId: serverRun.id,
-        }));
-        await get().hydrateFromDurableStore();
-        return serverRun;
+      if (!json || !json.data) {
+        throw new Error("Server returned an invalid run creation response.");
       }
+      const serverRun = json.data as WorkflowRun;
+      const runLog = createActivityEntry(
+        "run_event",
+        "Workflow Simulation Started",
+        `Started case simulation run '${serverRun.id}' for '${wf.name}' on initial state '${serverRun.currentStateId}'.`,
+        {
+          workflowId: wf.id,
+          workflowName: wf.name,
+          severity: "info",
+          metadata: { runId: serverRun.id },
+        }
+      );
+
+      set((state) => ({
+        activeRuns: [serverRun, ...state.activeRuns],
+        activityLogs: [runLog, ...(state.activityLogs || [])],
+        activeRunId: serverRun.id,
+      }));
+      await get().hydrateFromDurableStore();
+      return serverRun;
     }
 
     const newRun = createWorkflowRun(wf, customContext);
@@ -1259,27 +1260,28 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       }
 
       const json = await res.json();
-      if (json && json.data && json.data.updatedRun) {
-        const serverRun = json.data.updatedRun as WorkflowRun;
-        const eventLog = createActivityEntry(
-          "run_event",
-          "Event Dispatched to Simulation",
-          `Dispatched '${eventName}' on run '${runId}' (${wf.name}). Current state: '${serverRun.currentStateId}'.`,
-          {
-            workflowId: wf.id,
-            workflowName: wf.name,
-            severity: serverRun.status === "failed" ? "error" : "info",
-            metadata: { runId, eventName },
-          }
-        );
-
-        set((state) => ({
-          activeRuns: state.activeRuns.map((r) => (r.id === runId ? serverRun : r)),
-          activityLogs: [eventLog, ...(state.activityLogs || [])],
-        }));
-        await get().hydrateFromDurableStore();
-        return;
+      if (!json || !json.data || !json.data.updatedRun) {
+        throw new Error("Server returned an invalid run dispatch response.");
       }
+      const serverRun = json.data.updatedRun as WorkflowRun;
+      const eventLog = createActivityEntry(
+        "run_event",
+        "Event Dispatched to Simulation",
+        `Dispatched '${eventName}' on run '${runId}' (${wf.name}). Current state: '${serverRun.currentStateId}'.`,
+        {
+          workflowId: wf.id,
+          workflowName: wf.name,
+          severity: serverRun.status === "failed" ? "error" : "info",
+          metadata: { runId, eventName },
+        }
+      );
+
+      set((state) => ({
+        activeRuns: state.activeRuns.map((r) => (r.id === runId ? serverRun : r)),
+        activityLogs: [eventLog, ...(state.activityLogs || [])],
+      }));
+      await get().hydrateFromDurableStore();
+      return;
     }
 
     const { updatedRun } = dispatchWorkflowEvent(wf, run, {
