@@ -226,6 +226,7 @@ export const AuditEventSchema = z.strictObject({
   id: z.string(),
   workflowRunId: z.string(),
   workflowVersion: z.string(),
+  sequence: z.number().optional(),
   timestamp: z.string(),
   eventType: z.enum([
     "workflow_started",

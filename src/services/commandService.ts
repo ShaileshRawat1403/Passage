@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { getPersistenceAdapter } from "./persistenceAdapter";
 import {
   WorkflowDefinition,
@@ -16,6 +17,12 @@ export interface CommandResponse<T> {
   isDuplicate?: boolean;
 }
 
+function computeHash(payload: unknown): string {
+  if (!payload) return "";
+  const str = typeof payload === "string" ? payload : JSON.stringify(payload);
+  return createHash("sha256").update(str).digest("hex");
+}
+
 export class CommandService {
   private adapter = getPersistenceAdapter();
 
@@ -23,14 +30,30 @@ export class CommandService {
     definition: WorkflowDefinition,
     idempotencyKey?: string
   ): Promise<CommandResponse<WorkflowDefinition>> {
+    const requestHash = computeHash(definition);
+
     if (idempotencyKey) {
-      const check = await this.adapter.checkOrSetIdempotency(idempotencyKey);
-      if (check.isDuplicate && check.record?.response) {
-        return {
-          success: true,
-          data: check.record.response as unknown as WorkflowDefinition,
-          isDuplicate: true,
-        };
+      try {
+        const check = await this.adapter.checkOrSetIdempotency(idempotencyKey, requestHash);
+        if (check.isDuplicate) {
+          if (check.inProgress) {
+            return {
+              success: false,
+              error: `Command with idempotency key '${idempotencyKey}' is currently in progress.`,
+              isDuplicate: true,
+            };
+          }
+          if (check.record?.response) {
+            return {
+              success: true,
+              data: check.record.response as unknown as WorkflowDefinition,
+              isDuplicate: true,
+            };
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: msg };
       }
     }
 
@@ -58,7 +81,10 @@ export class CommandService {
     await this.adapter.appendWorkspaceActivity(activity);
 
     if (idempotencyKey) {
-      await this.adapter.completeIdempotency(idempotencyKey, savedHead as unknown as Record<string, unknown>);
+      await this.adapter.completeIdempotency(
+        idempotencyKey,
+        savedHead as unknown as Record<string, unknown>
+      );
     }
 
     return { success: true, data: savedHead };
@@ -69,14 +95,30 @@ export class CommandService {
     version: string,
     idempotencyKey?: string
   ): Promise<CommandResponse<WorkflowDefinition>> {
+    const requestHash = computeHash({ workflowId, version });
+
     if (idempotencyKey) {
-      const check = await this.adapter.checkOrSetIdempotency(idempotencyKey);
-      if (check.isDuplicate && check.record?.response) {
-        return {
-          success: true,
-          data: check.record.response as unknown as WorkflowDefinition,
-          isDuplicate: true,
-        };
+      try {
+        const check = await this.adapter.checkOrSetIdempotency(idempotencyKey, requestHash);
+        if (check.isDuplicate) {
+          if (check.inProgress) {
+            return {
+              success: false,
+              error: `Command with idempotency key '${idempotencyKey}' is currently in progress.`,
+              isDuplicate: true,
+            };
+          }
+          if (check.record?.response) {
+            return {
+              success: true,
+              data: check.record.response as unknown as WorkflowDefinition,
+              isDuplicate: true,
+            };
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: msg };
       }
     }
 
@@ -92,7 +134,13 @@ export class CommandService {
       updatedAt: new Date().toISOString(),
     };
 
-    await this.adapter.saveWorkflowVersion(workflowId, version, updatedHead);
+    try {
+      await this.adapter.saveWorkflowVersion(workflowId, version, updatedHead);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+
     const savedHead = await this.adapter.saveWorkflowHead(updatedHead);
 
     const activity: WorkspaceActivity = {
@@ -109,7 +157,10 @@ export class CommandService {
     await this.adapter.appendWorkspaceActivity(activity);
 
     if (idempotencyKey) {
-      await this.adapter.completeIdempotency(idempotencyKey, savedHead as unknown as Record<string, unknown>);
+      await this.adapter.completeIdempotency(
+        idempotencyKey,
+        savedHead as unknown as Record<string, unknown>
+      );
     }
 
     return { success: true, data: savedHead };
@@ -121,14 +172,30 @@ export class CommandService {
     initialContext?: Record<string, unknown>,
     idempotencyKey?: string
   ): Promise<CommandResponse<WorkflowRun>> {
+    const requestHash = computeHash({ workflowId, caseId, initialContext });
+
     if (idempotencyKey) {
-      const check = await this.adapter.checkOrSetIdempotency(idempotencyKey);
-      if (check.isDuplicate && check.record?.response) {
-        return {
-          success: true,
-          data: check.record.response as unknown as WorkflowRun,
-          isDuplicate: true,
-        };
+      try {
+        const check = await this.adapter.checkOrSetIdempotency(idempotencyKey, requestHash);
+        if (check.isDuplicate) {
+          if (check.inProgress) {
+            return {
+              success: false,
+              error: `Command with idempotency key '${idempotencyKey}' is currently in progress.`,
+              isDuplicate: true,
+            };
+          }
+          if (check.record?.response) {
+            return {
+              success: true,
+              data: check.record.response as unknown as WorkflowRun,
+              isDuplicate: true,
+            };
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: msg };
       }
     }
 
@@ -137,7 +204,6 @@ export class CommandService {
       return { success: false, error: `Workflow ${workflowId} not found` };
     }
 
-    const runId = `RUN-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const actualCaseId = caseId || `CASE-${Date.now().toString(36).toUpperCase()}`;
 
     const newRun = createWorkflowRun(wf, initialContext, actualCaseId);
@@ -145,9 +211,10 @@ export class CommandService {
     // Save run to storage
     const savedRun = await this.adapter.saveWorkflowRun(newRun);
 
-    // Append append-only run events
-    for (const event of savedRun.auditTrail) {
-      await this.adapter.appendRunEvent(event);
+    // Append append-only run events with sequence
+    for (let i = 0; i < savedRun.auditTrail.length; i++) {
+      const ev = savedRun.auditTrail[i]!;
+      await this.adapter.appendRunEvent({ ...ev, sequence: i + 1 });
     }
 
     // Append workspace activity
@@ -165,7 +232,10 @@ export class CommandService {
     await this.adapter.appendWorkspaceActivity(activity);
 
     if (idempotencyKey) {
-      await this.adapter.completeIdempotency(idempotencyKey, savedRun as unknown as Record<string, unknown>);
+      await this.adapter.completeIdempotency(
+        idempotencyKey,
+        savedRun as unknown as Record<string, unknown>
+      );
     }
 
     return { success: true, data: savedRun };
@@ -177,14 +247,33 @@ export class CommandService {
     eventPayload?: Record<string, unknown>,
     idempotencyKey?: string
   ): Promise<CommandResponse<{ updatedRun: WorkflowRun; transitionTaken: boolean }>> {
+    const requestHash = computeHash({ runId, eventName, eventPayload });
+
     if (idempotencyKey) {
-      const check = await this.adapter.checkOrSetIdempotency(idempotencyKey);
-      if (check.isDuplicate && check.record?.response) {
-        return {
-          success: true,
-          data: check.record.response as unknown as { updatedRun: WorkflowRun; transitionTaken: boolean },
-          isDuplicate: true,
-        };
+      try {
+        const check = await this.adapter.checkOrSetIdempotency(idempotencyKey, requestHash);
+        if (check.isDuplicate) {
+          if (check.inProgress) {
+            return {
+              success: false,
+              error: `Command with idempotency key '${idempotencyKey}' is currently in progress.`,
+              isDuplicate: true,
+            };
+          }
+          if (check.record?.response) {
+            return {
+              success: true,
+              data: check.record.response as unknown as {
+                updatedRun: WorkflowRun;
+                transitionTaken: boolean;
+              },
+              isDuplicate: true,
+            };
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: msg };
       }
     }
 
@@ -210,10 +299,14 @@ export class CommandService {
 
     const updatedRun = await this.adapter.saveWorkflowRun(result.updatedRun);
 
-    // Persist new audit/run events append-only
+    // Persist new audit/run events with sequential numbering
     const newEvents = updatedRun.auditTrail.slice(prevAuditCount);
-    for (const ev of newEvents) {
-      await this.adapter.appendRunEvent(ev);
+    for (let i = 0; i < newEvents.length; i++) {
+      const ev = newEvents[i]!;
+      await this.adapter.appendRunEvent({
+        ...ev,
+        sequence: prevAuditCount + i + 1,
+      });
     }
 
     const transitionTaken = Boolean(result.transitionTaken);
@@ -237,7 +330,10 @@ export class CommandService {
     const responsePayload = { updatedRun, transitionTaken };
 
     if (idempotencyKey) {
-      await this.adapter.completeIdempotency(idempotencyKey, responsePayload as unknown as Record<string, unknown>);
+      await this.adapter.completeIdempotency(
+        idempotencyKey,
+        responsePayload as unknown as Record<string, unknown>
+      );
     }
 
     return { success: true, data: responsePayload };
@@ -247,18 +343,33 @@ export class CommandService {
     connection: ConnectionCredential,
     idempotencyKey?: string
   ): Promise<CommandResponse<ConnectionCredential>> {
+    const requestHash = computeHash(connection);
+
     if (idempotencyKey) {
-      const check = await this.adapter.checkOrSetIdempotency(idempotencyKey);
-      if (check.isDuplicate && check.record?.response) {
-        return {
-          success: true,
-          data: check.record.response as unknown as ConnectionCredential,
-          isDuplicate: true,
-        };
+      try {
+        const check = await this.adapter.checkOrSetIdempotency(idempotencyKey, requestHash);
+        if (check.isDuplicate) {
+          if (check.inProgress) {
+            return {
+              success: false,
+              error: `Command with idempotency key '${idempotencyKey}' is currently in progress.`,
+              isDuplicate: true,
+            };
+          }
+          if (check.record?.response) {
+            return {
+              success: true,
+              data: check.record.response as unknown as ConnectionCredential,
+              isDuplicate: true,
+            };
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: msg };
       }
     }
 
-    // Status model correction: ordinary provider templates default to "configured" or "untested"
     let status = connection.status;
     if (status === "available_local" && !connection.id.includes("ollama")) {
       status = "configured";
@@ -283,7 +394,10 @@ export class CommandService {
     await this.adapter.appendWorkspaceActivity(activity);
 
     if (idempotencyKey) {
-      await this.adapter.completeIdempotency(idempotencyKey, saved as unknown as Record<string, unknown>);
+      await this.adapter.completeIdempotency(
+        idempotencyKey,
+        saved as unknown as Record<string, unknown>
+      );
     }
 
     return { success: true, data: saved };

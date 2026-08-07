@@ -1,17 +1,5 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  getDocs,
-  collection,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  Firestore,
-} from "firebase/firestore";
+import { initializeApp as initAdminApp, getApps as getAdminApps, App as AdminApp } from "firebase-admin/app";
+import { getFirestore as getAdminFirestore, Firestore as AdminFirestore } from "firebase-admin/firestore";
 import {
   WorkflowDefinition,
   WorkflowRun,
@@ -21,11 +9,22 @@ import {
 } from "../types/workflow";
 import {
   WorkflowEntity,
+  WorkflowEntitySchema,
   WorkflowVersionEntity,
+  WorkflowVersionEntitySchema,
   IdempotencyRecord,
+  IdempotencyRecordSchema,
+  RunEventEntitySchema,
+  WorkspaceActivityEntitySchema,
+  ConnectionEntitySchema,
 } from "../domain/persistence";
+import { WorkflowRunSchema } from "../domain/schemas";
 
-import firebaseConfigRaw from "../../firebase-applet-config.json" assert { type: "json" };
+export interface IdempotencyCheckResult {
+  isDuplicate: boolean;
+  inProgress?: boolean;
+  record?: IdempotencyRecord;
+}
 
 export interface IPersistenceAdapter {
   saveWorkflowHead(workflow: WorkflowDefinition): Promise<WorkflowDefinition>;
@@ -60,7 +59,7 @@ export interface IPersistenceAdapter {
   checkOrSetIdempotency(
     key: string,
     requestHash?: string
-  ): Promise<{ isDuplicate: boolean; record?: IdempotencyRecord }>;
+  ): Promise<IdempotencyCheckResult>;
   completeIdempotency(
     key: string,
     response?: Record<string, unknown>
@@ -68,10 +67,10 @@ export interface IPersistenceAdapter {
 }
 
 /**
- * Memory Storage fallback for tests / offline mode
+ * In-Memory Storage Adapter for unit testing and local development
  */
 export class MemoryPersistenceAdapter implements IPersistenceAdapter {
-  private workflows = new Map<string, WorkflowDefinition>();
+  private workflows = new Map<string, WorkflowEntity>();
   private versions = new Map<string, WorkflowVersionEntity>();
   private runs = new Map<string, WorkflowRun>();
   private runEvents: AuditEvent[] = [];
@@ -80,16 +79,35 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   private idempotencyRecords = new Map<string, IdempotencyRecord>();
 
   async saveWorkflowHead(workflow: WorkflowDefinition): Promise<WorkflowDefinition> {
-    this.workflows.set(workflow.id, { ...workflow, updatedAt: new Date().toISOString() });
-    return this.workflows.get(workflow.id)!;
+    const now = new Date().toISOString();
+    const existing = this.workflows.get(workflow.id);
+    const entity: WorkflowEntity = {
+      id: workflow.id,
+      name: workflow.name,
+      description: workflow.description || "",
+      currentVersion: workflow.version || "1.0.0",
+      status: workflow.status || "draft",
+      headDefinition: workflow,
+      createdAt: existing?.createdAt || workflow.createdAt || now,
+      updatedAt: now,
+    };
+    const validated = WorkflowEntitySchema.parse(entity);
+    this.workflows.set(workflow.id, validated);
+    return validated.headDefinition;
   }
 
   async getWorkflowHead(workflowId: string): Promise<WorkflowDefinition | null> {
-    return this.workflows.get(workflowId) || null;
+    const entity = this.workflows.get(workflowId);
+    if (!entity) return null;
+    const validated = WorkflowEntitySchema.parse(entity);
+    return validated.headDefinition;
   }
 
   async getAllWorkflows(): Promise<WorkflowDefinition[]> {
-    return Array.from(this.workflows.values());
+    return Array.from(this.workflows.values()).map((e) => {
+      const validated = WorkflowEntitySchema.parse(e);
+      return validated.headDefinition;
+    });
   }
 
   async deleteWorkflow(workflowId: string): Promise<void> {
@@ -101,16 +119,22 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     version: string,
     definition: WorkflowDefinition
   ): Promise<WorkflowVersionEntity> {
-    const id = `${workflowId}_v${version}`;
+    const versionKey = `${workflowId}_v${version}`;
+    if (this.versions.has(versionKey)) {
+      throw new Error(
+        `Version ${version} for workflow ${workflowId} already exists and is immutable.`
+      );
+    }
     const versionEntity: WorkflowVersionEntity = {
-      id,
+      id: versionKey,
       workflowId,
       version,
       definition,
       createdAt: new Date().toISOString(),
     };
-    this.versions.set(id, versionEntity);
-    return versionEntity;
+    const validated = WorkflowVersionEntitySchema.parse(versionEntity);
+    this.versions.set(versionKey, validated);
+    return validated;
   }
 
   async getWorkflowVersion(
@@ -118,62 +142,82 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     version: string
   ): Promise<WorkflowDefinition | null> {
     const entity = this.versions.get(`${workflowId}_v${version}`);
-    return entity ? entity.definition : null;
+    if (!entity) return null;
+    const validated = WorkflowVersionEntitySchema.parse(entity);
+    return validated.definition;
   }
 
   async saveWorkflowRun(run: WorkflowRun): Promise<WorkflowRun> {
-    this.runs.set(run.id, { ...run, lastEventAt: new Date().toISOString() });
-    return this.runs.get(run.id)!;
+    const validated = WorkflowRunSchema.parse({
+      ...run,
+      lastEventAt: run.lastEventAt || new Date().toISOString(),
+    });
+    this.runs.set(run.id, validated);
+    return validated;
   }
 
   async getWorkflowRun(runId: string): Promise<WorkflowRun | null> {
-    return this.runs.get(runId) || null;
+    const run = this.runs.get(runId);
+    if (!run) return null;
+    return WorkflowRunSchema.parse(run);
   }
 
   async getAllWorkflowRuns(): Promise<WorkflowRun[]> {
-    return Array.from(this.runs.values());
+    return Array.from(this.runs.values()).map((r) => WorkflowRunSchema.parse(r));
   }
 
   async appendRunEvent(event: AuditEvent): Promise<AuditEvent> {
-    this.runEvents.push(event);
     const run = this.runs.get(event.workflowRunId);
+    const existingRunEvents = this.runEvents.filter(
+      (e) => e.workflowRunId === event.workflowRunId
+    );
+    const sequence = event.sequence || existingRunEvents.length + 1;
+    const sequencedEvent: AuditEvent = { ...event, sequence };
+    const validated = RunEventEntitySchema.parse(sequencedEvent);
+
+    this.runEvents.push(validated);
+
     if (run) {
-      const exists = run.auditTrail.some((e) => e.id === event.id);
+      const exists = run.auditTrail.some((e) => e.id === validated.id);
       if (!exists) {
-        run.auditTrail.push(event);
+        run.auditTrail.push(validated);
       }
-      run.lastEventAt = event.timestamp || new Date().toISOString();
+      run.lastEventAt = validated.timestamp || new Date().toISOString();
+      this.runs.set(run.id, WorkflowRunSchema.parse(run));
     }
-    return event;
+    return validated;
   }
 
   async getRunEvents(runId: string): Promise<AuditEvent[]> {
-    return this.runEvents.filter((e) => e.workflowRunId === runId);
+    const events = this.runEvents.filter((e) => e.workflowRunId === runId);
+    return events.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
   }
 
   async appendWorkspaceActivity(activity: WorkspaceActivity): Promise<WorkspaceActivity> {
-    const existingIdx = this.activities.findIndex((a) => a.id === activity.id);
+    const validated = WorkspaceActivityEntitySchema.parse(activity);
+    const existingIdx = this.activities.findIndex((a) => a.id === validated.id);
     if (existingIdx >= 0) {
-      this.activities[existingIdx] = activity;
+      this.activities[existingIdx] = validated;
     } else {
-      this.activities.unshift(activity);
+      this.activities.unshift(validated);
     }
-    return activity;
+    return validated;
   }
 
   async getWorkspaceActivities(): Promise<WorkspaceActivity[]> {
-    return [...this.activities].sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    return [...this.activities]
+      .map((a) => WorkspaceActivityEntitySchema.parse(a))
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
   async saveConnection(connection: ConnectionCredential): Promise<ConnectionCredential> {
-    this.connections.set(connection.id, connection);
-    return connection;
+    const validated = ConnectionEntitySchema.parse(connection);
+    this.connections.set(validated.id, validated);
+    return validated;
   }
 
   async getAllConnections(): Promise<ConnectionCredential[]> {
-    return Array.from(this.connections.values());
+    return Array.from(this.connections.values()).map((c) => ConnectionEntitySchema.parse(c));
   }
 
   async deleteConnection(connectionId: string): Promise<void> {
@@ -183,11 +227,24 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   async checkOrSetIdempotency(
     key: string,
     requestHash?: string
-  ): Promise<{ isDuplicate: boolean; record?: IdempotencyRecord }> {
+  ): Promise<IdempotencyCheckResult> {
     const existing = this.idempotencyRecords.get(key);
     if (existing) {
-      return { isDuplicate: true, record: existing };
+      if (
+        requestHash &&
+        existing.requestHash &&
+        existing.requestHash !== requestHash
+      ) {
+        throw new Error(
+          `Idempotency key conflict: key '${key}' was already used with a different request payload.`
+        );
+      }
+      if (existing.status === "completed") {
+        return { isDuplicate: true, inProgress: false, record: existing };
+      }
+      return { isDuplicate: true, inProgress: true, record: existing };
     }
+
     const newRecord: IdempotencyRecord = {
       id: `idemp-${key}`,
       key,
@@ -195,8 +252,9 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
       status: "pending",
       createdAt: new Date().toISOString(),
     };
-    this.idempotencyRecords.set(key, newRecord);
-    return { isDuplicate: false, record: newRecord };
+    const validated = IdempotencyRecordSchema.parse(newRecord);
+    this.idempotencyRecords.set(key, validated);
+    return { isDuplicate: false, inProgress: false, record: validated };
   }
 
   async completeIdempotency(
@@ -208,6 +266,7 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
       existing.status = "completed";
       existing.response = response;
       existing.completedAt = new Date().toISOString();
+      this.idempotencyRecords.set(key, IdempotencyRecordSchema.parse(existing));
     }
   }
 
@@ -223,49 +282,68 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
 }
 
 /**
- * Firestore Persistence Adapter
+ * Server-Side Admin Firestore Persistence Adapter
+ * Uses firebase-admin to bypass client rules securely from Passage backend endpoints.
  */
 export class FirestorePersistenceAdapter implements IPersistenceAdapter {
-  private db: Firestore;
+  private db: AdminFirestore;
 
-  constructor() {
-    const config = {
-      apiKey: firebaseConfigRaw.apiKey,
-      projectId: firebaseConfigRaw.projectId,
-      appId: firebaseConfigRaw.appId,
-      authDomain: firebaseConfigRaw.authDomain,
-    };
-    const app = getApps().length === 0 ? initializeApp(config) : getApp();
-    const dbId = firebaseConfigRaw.firestoreDatabaseId || "(default)";
-    this.db = getFirestore(app, dbId);
+  constructor(projectId?: string) {
+    const existingApps = getAdminApps();
+    let app: AdminApp;
+    if (existingApps.length > 0) {
+      app = existingApps[0]!;
+    } else {
+      const pId = projectId || process.env.FIREBASE_PROJECT_ID || process.env.GCP_PROJECT;
+      if (!pId) {
+        throw new Error(
+          "Firestore Persistence Initialization Failed: Missing Project ID for firebase-admin."
+        );
+      }
+      app = initAdminApp({ projectId: pId });
+    }
+    this.db = getAdminFirestore(app);
   }
 
   async saveWorkflowHead(workflow: WorkflowDefinition): Promise<WorkflowDefinition> {
-    const docRef = doc(this.db, "workflows", workflow.id);
-    const updated = {
-      ...workflow,
-      updatedAt: new Date().toISOString(),
+    const docRef = this.db.collection("workflows").doc(workflow.id);
+    const snap = await docRef.get();
+    const existing = snap.exists ? (snap.data() as WorkflowEntity) : null;
+    const now = new Date().toISOString();
+
+    const entity: WorkflowEntity = {
+      id: workflow.id,
+      name: workflow.name,
+      description: workflow.description || "",
+      currentVersion: workflow.version || "1.0.0",
+      status: workflow.status || "draft",
+      headDefinition: workflow,
+      createdAt: existing?.createdAt || workflow.createdAt || now,
+      updatedAt: now,
     };
-    await setDoc(docRef, updated, { merge: true });
-    return updated;
+    const validated = WorkflowEntitySchema.parse(entity);
+    await docRef.set(validated);
+    return validated.headDefinition;
   }
 
   async getWorkflowHead(workflowId: string): Promise<WorkflowDefinition | null> {
-    const docRef = doc(this.db, "workflows", workflowId);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    return snap.data() as WorkflowDefinition;
+    const docRef = this.db.collection("workflows").doc(workflowId);
+    const snap = await docRef.get();
+    if (!snap.exists) return null;
+    const validated = WorkflowEntitySchema.parse(snap.data());
+    return validated.headDefinition;
   }
 
   async getAllWorkflows(): Promise<WorkflowDefinition[]> {
-    const colRef = collection(this.db, "workflows");
-    const snap = await getDocs(colRef);
-    return snap.docs.map((d) => d.data() as WorkflowDefinition);
+    const snap = await this.db.collection("workflows").get();
+    return snap.docs.map((d) => {
+      const validated = WorkflowEntitySchema.parse(d.data());
+      return validated.headDefinition;
+    });
   }
 
   async deleteWorkflow(workflowId: string): Promise<void> {
-    const docRef = doc(this.db, "workflows", workflowId);
-    await deleteDoc(docRef);
+    await this.db.collection("workflows").doc(workflowId).delete();
   }
 
   async saveWorkflowVersion(
@@ -273,145 +351,186 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
     version: string,
     definition: WorkflowDefinition
   ): Promise<WorkflowVersionEntity> {
-    const id = `${workflowId}_v${version}`;
-    const docRef = doc(this.db, "workflow_versions", id);
-    const entity: WorkflowVersionEntity = {
-      id,
-      workflowId,
-      version,
-      definition,
-      createdAt: new Date().toISOString(),
-    };
-    await setDoc(docRef, entity);
-    return entity;
+    const versionKey = `${workflowId}_v${version}`;
+    const docRef = this.db.collection("workflow_versions").doc(versionKey);
+
+    return await this.db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (snap.exists) {
+        throw new Error(
+          `Version ${version} for workflow ${workflowId} already exists and is immutable.`
+        );
+      }
+      const versionEntity: WorkflowVersionEntity = {
+        id: versionKey,
+        workflowId,
+        version,
+        definition,
+        createdAt: new Date().toISOString(),
+      };
+      const validated = WorkflowVersionEntitySchema.parse(versionEntity);
+      transaction.set(docRef, validated);
+      return validated;
+    });
   }
 
   async getWorkflowVersion(
     workflowId: string,
     version: string
   ): Promise<WorkflowDefinition | null> {
-    const id = `${workflowId}_v${version}`;
-    const docRef = doc(this.db, "workflow_versions", id);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    const data = snap.data() as WorkflowVersionEntity;
-    return data.definition;
+    const versionKey = `${workflowId}_v${version}`;
+    const snap = await this.db.collection("workflow_versions").doc(versionKey).get();
+    if (!snap.exists) return null;
+    const validated = WorkflowVersionEntitySchema.parse(snap.data());
+    return validated.definition;
   }
 
   async saveWorkflowRun(run: WorkflowRun): Promise<WorkflowRun> {
-    const docRef = doc(this.db, "workflow_runs", run.id);
-    const updated = {
+    const validated = WorkflowRunSchema.parse({
       ...run,
-      lastEventAt: new Date().toISOString(),
-    };
-    await setDoc(docRef, updated, { merge: true });
-    return updated;
+      lastEventAt: run.lastEventAt || new Date().toISOString(),
+    });
+    await this.db.collection("workflow_runs").doc(run.id).set(validated, { merge: true });
+    return validated;
   }
 
   async getWorkflowRun(runId: string): Promise<WorkflowRun | null> {
-    const docRef = doc(this.db, "workflow_runs", runId);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    return snap.data() as WorkflowRun;
+    const snap = await this.db.collection("workflow_runs").doc(runId).get();
+    if (!snap.exists) return null;
+    return WorkflowRunSchema.parse(snap.data());
   }
 
   async getAllWorkflowRuns(): Promise<WorkflowRun[]> {
-    const colRef = collection(this.db, "workflow_runs");
-    const snap = await getDocs(colRef);
-    return snap.docs.map((d) => d.data() as WorkflowRun);
+    const snap = await this.db.collection("workflow_runs").get();
+    return snap.docs.map((d) => WorkflowRunSchema.parse(d.data()));
   }
 
   async appendRunEvent(event: AuditEvent): Promise<AuditEvent> {
-    const docRef = doc(this.db, "run_events", event.id);
-    await setDoc(docRef, event);
+    const runRef = this.db.collection("workflow_runs").doc(event.workflowRunId);
+    const eventRef = this.db.collection("run_events").doc(event.id);
 
-    // Update workflow run's local auditTrail snapshot as well
-    const runDocRef = doc(this.db, "workflow_runs", event.workflowRunId);
-    const snap = await getDoc(runDocRef);
-    if (snap.exists()) {
-      const run = snap.data() as WorkflowRun;
-      const exists = run.auditTrail.some((e) => e.id === event.id);
-      if (!exists) {
-        run.auditTrail.push(event);
+    return await this.db.runTransaction(async (transaction) => {
+      const runSnap = await transaction.get(runRef);
+      let sequence = event.sequence;
+      let runData: WorkflowRun | null = null;
+
+      if (runSnap.exists) {
+        runData = WorkflowRunSchema.parse(runSnap.data());
+        if (!sequence) {
+          sequence = (runData.auditTrail?.length || 0) + 1;
+        }
+      } else {
+        sequence = sequence || 1;
       }
-      run.lastEventAt = event.timestamp || new Date().toISOString();
-      await setDoc(runDocRef, run, { merge: true });
-    }
-    return event;
+
+      const sequencedEvent: AuditEvent = { ...event, sequence };
+      const validatedEvent = RunEventEntitySchema.parse(sequencedEvent);
+
+      transaction.set(eventRef, validatedEvent);
+
+      if (runData) {
+        const exists = runData.auditTrail.some((e) => e.id === validatedEvent.id);
+        if (!exists) {
+          runData.auditTrail.push(validatedEvent);
+        }
+        runData.lastEventAt = validatedEvent.timestamp || new Date().toISOString();
+        transaction.set(runRef, runData);
+      }
+      return validatedEvent;
+    });
   }
 
   async getRunEvents(runId: string): Promise<AuditEvent[]> {
-    const colRef = collection(this.db, "run_events");
-    const q = query(colRef, where("workflowRunId", "==", runId));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data() as AuditEvent);
+    const snap = await this.db
+      .collection("run_events")
+      .where("workflowRunId", "==", runId)
+      .get();
+    const events = snap.docs.map((d) => RunEventEntitySchema.parse(d.data()));
+    return events.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
   }
 
   async appendWorkspaceActivity(activity: WorkspaceActivity): Promise<WorkspaceActivity> {
-    const docRef = doc(this.db, "workspace_activity", activity.id);
-    await setDoc(docRef, activity, { merge: true });
-    return activity;
+    const validated = WorkspaceActivityEntitySchema.parse(activity);
+    await this.db.collection("workspace_activity").doc(activity.id).set(validated, { merge: true });
+    return validated;
   }
 
   async getWorkspaceActivities(): Promise<WorkspaceActivity[]> {
-    const colRef = collection(this.db, "workspace_activity");
-    const snap = await getDocs(colRef);
-    const items = snap.docs.map((d) => d.data() as WorkspaceActivity);
+    const snap = await this.db.collection("workspace_activity").get();
+    const items = snap.docs.map((d) => WorkspaceActivityEntitySchema.parse(d.data()));
     return items.sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }
 
   async saveConnection(connection: ConnectionCredential): Promise<ConnectionCredential> {
-    const docRef = doc(this.db, "connections", connection.id);
-    await setDoc(docRef, connection, { merge: true });
-    return connection;
+    const validated = ConnectionEntitySchema.parse(connection);
+    await this.db.collection("connections").doc(connection.id).set(validated, { merge: true });
+    return validated;
   }
 
   async getAllConnections(): Promise<ConnectionCredential[]> {
-    const colRef = collection(this.db, "connections");
-    const snap = await getDocs(colRef);
-    return snap.docs.map((d) => d.data() as ConnectionCredential);
+    const snap = await this.db.collection("connections").get();
+    return snap.docs.map((d) => ConnectionEntitySchema.parse(d.data()));
   }
 
   async deleteConnection(connectionId: string): Promise<void> {
-    const docRef = doc(this.db, "connections", connectionId);
-    await deleteDoc(docRef);
+    await this.db.collection("connections").doc(connectionId).delete();
   }
 
   async checkOrSetIdempotency(
     key: string,
     requestHash?: string
-  ): Promise<{ isDuplicate: boolean; record?: IdempotencyRecord }> {
-    const docRef = doc(this.db, "idempotency_records", key);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return { isDuplicate: true, record: snap.data() as IdempotencyRecord };
-    }
-    const record: IdempotencyRecord = {
-      id: `idemp-${key}`,
-      key,
-      requestHash,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-    await setDoc(docRef, record);
-    return { isDuplicate: false, record };
+  ): Promise<IdempotencyCheckResult> {
+    const docRef = this.db.collection("idempotency_records").doc(key);
+
+    return await this.db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (snap.exists) {
+        const record = IdempotencyRecordSchema.parse(snap.data());
+        if (
+          requestHash &&
+          record.requestHash &&
+          record.requestHash !== requestHash
+        ) {
+          throw new Error(
+            `Idempotency key conflict: key '${key}' was already used with a different request payload.`
+          );
+        }
+        if (record.status === "completed") {
+          return { isDuplicate: true, inProgress: false, record };
+        }
+        return { isDuplicate: true, inProgress: true, record };
+      }
+
+      const newRecord: IdempotencyRecord = {
+        id: `idemp-${key}`,
+        key,
+        requestHash,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+      const validated = IdempotencyRecordSchema.parse(newRecord);
+      transaction.set(docRef, validated);
+      return { isDuplicate: false, inProgress: false, record: validated };
+    });
   }
 
   async completeIdempotency(
     key: string,
     response?: Record<string, unknown>
   ): Promise<void> {
-    const docRef = doc(this.db, "idempotency_records", key);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const record = snap.data() as IdempotencyRecord;
-      record.status = "completed";
-      record.response = response;
-      record.completedAt = new Date().toISOString();
-      await setDoc(docRef, record, { merge: true });
-    }
+    const docRef = this.db.collection("idempotency_records").doc(key);
+    await this.db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      if (snap.exists) {
+        const record = IdempotencyRecordSchema.parse(snap.data());
+        record.status = "completed";
+        record.response = response;
+        record.completedAt = new Date().toISOString();
+        transaction.set(docRef, record);
+      }
+    });
   }
 }
 
@@ -423,21 +542,36 @@ let persistenceAdapterInstance: IPersistenceAdapter | null = null;
 export function getPersistenceAdapter(): IPersistenceAdapter {
   if (persistenceAdapterInstance) return persistenceAdapterInstance;
 
-  // Use MemoryPersistenceAdapter when running in test runner (Vitest)
-  if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
+  const backend = process.env.PERSISTENCE_BACKEND;
+
+  // Unit tests or explicit memory setting
+  if (
+    backend === "memory" ||
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST === "true"
+  ) {
     persistenceAdapterInstance = new MemoryPersistenceAdapter();
     return persistenceAdapterInstance;
   }
 
-  try {
-    if (firebaseConfigRaw && firebaseConfigRaw.projectId) {
+  // Explicit firestore setting or production mode requirement
+  if (backend === "firestore") {
+    try {
       persistenceAdapterInstance = new FirestorePersistenceAdapter();
-    } else {
-      persistenceAdapterInstance = new MemoryPersistenceAdapter();
+      return persistenceAdapterInstance;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Persistence Failure: Firestore backend requested but failed to initialize: ${message}`
+      );
     }
-  } catch (err) {
-    console.warn("Falling back to MemoryPersistenceAdapter due to Firestore init issue:", err);
-    persistenceAdapterInstance = new MemoryPersistenceAdapter();
   }
+
+  // Default fallback for dev sandbox environment
+  persistenceAdapterInstance = new MemoryPersistenceAdapter();
   return persistenceAdapterInstance;
+}
+
+export function resetPersistenceAdapter(): void {
+  persistenceAdapterInstance = null;
 }

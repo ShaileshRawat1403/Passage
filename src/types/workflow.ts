@@ -213,6 +213,7 @@ export interface AuditEvent {
   id: string;
   workflowRunId: string;
   workflowVersion: string;
+  sequence?: number;
   timestamp: string;
   eventType:
     | "workflow_started"

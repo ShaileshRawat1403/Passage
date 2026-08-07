@@ -1236,16 +1236,23 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       ]);
 
       const updates: Partial<WorkflowStateStore> = {};
-      if (wfRes?.workflows?.length) {
+      if (wfRes && Array.isArray(wfRes.workflows)) {
         updates.workflows = wfRes.workflows;
+        if (wfRes.workflows.length > 0) {
+          const currentActive = get().activeWorkflowId;
+          const exists = wfRes.workflows.some((w: WorkflowDefinition) => w.id === currentActive);
+          if (!exists && wfRes.workflows[0]) {
+            updates.activeWorkflowId = wfRes.workflows[0].id;
+          }
+        }
       }
-      if (runRes?.runs?.length) {
+      if (runRes && Array.isArray(runRes.runs) && runRes.runs.length > 0) {
         updates.activeRuns = runRes.runs;
       }
-      if (actRes?.activities?.length) {
+      if (actRes && Array.isArray(actRes.activities) && actRes.activities.length > 0) {
         updates.activityLogs = actRes.activities;
       }
-      if (connRes?.connections?.length) {
+      if (connRes && Array.isArray(connRes.connections) && connRes.connections.length > 0) {
         updates.connections = connRes.connections;
       }
 
