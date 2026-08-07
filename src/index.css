@@ -1,43 +1,31 @@
 @import "tailwindcss";
 
-@theme {
-  --color-white: var(--text-main);
-  --color-black: var(--panel-solid);
-
-  --color-cyan-300: color-mix(in srgb, var(--primary-color) 80%, white);
-  --color-cyan-400: color-mix(in srgb, var(--primary-color) 90%, white);
-  --color-cyan-500: var(--primary-color);
-  
-  --color-slate-100: var(--text-main);
-  --color-slate-200: color-mix(in srgb, var(--text-main) 85%, var(--text-muted));
-  --color-slate-300: color-mix(in srgb, var(--text-main) 50%, var(--text-muted));
-  --color-slate-400: var(--text-muted);
-  --color-slate-500: color-mix(in srgb, var(--text-muted) 80%, var(--panel-solid));
-  --color-slate-600: color-mix(in srgb, var(--text-muted) 50%, var(--panel-solid));
-  --color-slate-800: color-mix(in srgb, var(--panel-solid) 80%, white);
-  --color-slate-900: var(--panel-solid);
-  --color-slate-950: var(--app-bg);
-}
-
 :root,
 [data-theme="cyber-obsidian"] {
   --app-bg: #020617;
-  --panel-bg: rgba(14, 22, 38, 0.75);
+  --panel-bg: rgba(14, 22, 38, 0.85);
   --panel-solid: #0e1626;
-  --border-subtle: rgba(255, 255, 255, 0.1);
+  --card-bg: #0e1626;
+  --border-subtle: rgba(255, 255, 255, 0.12);
   --border-accent: rgba(34, 211, 238, 0.35);
   --primary-color: #22d3ee;
   --primary-rgb: 34, 211, 238;
   --secondary-color: #a855f7;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
-  --grid-dots: rgba(255, 255, 255, 0.04);
+  --grid-dots: rgba(255, 255, 255, 0.08);
+  --canvas-bg: #020617;
+  --canvas-mask: rgba(2, 6, 23, 0.85);
+  --control-bg: rgba(0, 0, 0, 0.7);
+  --control-text: #f8fafc;
+  --control-border: rgba(255, 255, 255, 0.15);
 }
 
 [data-theme="emerald-matrix"] {
   --app-bg: #020d07;
   --panel-bg: rgba(6, 24, 15, 0.85);
   --panel-solid: #081a11;
+  --card-bg: #081a11;
   --border-subtle: rgba(16, 185, 129, 0.15);
   --border-accent: rgba(16, 185, 129, 0.4);
   --primary-color: #10b981;
@@ -46,12 +34,18 @@
   --text-main: #f0fdf4;
   --text-muted: #6ee7b7;
   --grid-dots: rgba(16, 185, 129, 0.08);
+  --canvas-bg: #020d07;
+  --canvas-mask: rgba(2, 13, 7, 0.85);
+  --control-bg: rgba(6, 24, 15, 0.85);
+  --control-text: #f0fdf4;
+  --control-border: rgba(16, 185, 129, 0.3);
 }
 
 [data-theme="tokyo-sunset"] {
   --app-bg: #0e0714;
   --panel-bg: rgba(26, 12, 36, 0.85);
   --panel-solid: #1b0e27;
+  --card-bg: #1b0e27;
   --border-subtle: rgba(236, 72, 153, 0.18);
   --border-accent: rgba(236, 72, 153, 0.4);
   --primary-color: #ec4899;
@@ -60,12 +54,18 @@
   --text-main: #fdf2f8;
   --text-muted: #f472b6;
   --grid-dots: rgba(236, 72, 153, 0.08);
+  --canvas-bg: #0e0714;
+  --canvas-mask: rgba(14, 7, 20, 0.85);
+  --control-bg: rgba(26, 12, 36, 0.85);
+  --control-text: #fdf2f8;
+  --control-border: rgba(236, 72, 153, 0.3);
 }
 
 [data-theme="polar-frost"] {
   --app-bg: #070e1c;
   --panel-bg: rgba(15, 23, 42, 0.85);
   --panel-solid: #0f172a;
+  --card-bg: #0f172a;
   --border-subtle: rgba(56, 189, 248, 0.18);
   --border-accent: rgba(56, 189, 248, 0.4);
   --primary-color: #38bdf8;
@@ -74,12 +74,18 @@
   --text-main: #f0f9ff;
   --text-muted: #7dd3fc;
   --grid-dots: rgba(56, 189, 248, 0.07);
+  --canvas-bg: #070e1c;
+  --canvas-mask: rgba(7, 14, 28, 0.85);
+  --control-bg: rgba(15, 23, 42, 0.85);
+  --control-text: #f0f9ff;
+  --control-border: rgba(56, 189, 248, 0.3);
 }
 
 [data-theme="monochrome-industrial"] {
   --app-bg: #09090b;
   --panel-bg: rgba(24, 24, 27, 0.85);
   --panel-solid: #18181b;
+  --card-bg: #18181b;
   --border-subtle: rgba(255, 255, 255, 0.12);
   --border-accent: rgba(255, 255, 255, 0.35);
   --primary-color: #f4f4f5;
@@ -88,20 +94,154 @@
   --text-main: #fafafa;
   --text-muted: #a1a1aa;
   --grid-dots: rgba(255, 255, 255, 0.06);
+  --canvas-bg: #09090b;
+  --canvas-mask: rgba(9, 9, 11, 0.85);
+  --control-bg: rgba(24, 24, 27, 0.85);
+  --control-text: #fafafa;
+  --control-border: rgba(255, 255, 255, 0.2);
 }
 
 [data-theme="blueprint-light"] {
   --app-bg: #f8fafc;
-  --panel-bg: rgba(255, 255, 255, 0.95);
+  --panel-bg: #ffffff;
   --panel-solid: #ffffff;
-  --border-subtle: rgba(203, 213, 225, 0.8);
-  --border-accent: rgba(37, 99, 235, 0.45);
+  --card-bg: #ffffff;
+  --border-subtle: #e2e8f0;
+  --border-accent: #2563eb;
   --primary-color: #2563eb;
   --primary-rgb: 37, 99, 235;
   --secondary-color: #0284c7;
   --text-main: #0f172a;
   --text-muted: #475569;
-  --grid-dots: rgba(37, 99, 235, 0.08);
+  --grid-dots: rgba(37, 99, 235, 0.12);
+  --canvas-bg: #f1f5f9;
+  --canvas-mask: rgba(255, 255, 255, 0.9);
+  --control-bg: #ffffff;
+  --control-text: #0f172a;
+  --control-border: #cbd5e1;
+  color-scheme: light;
+}
+
+/* Comprehensive Pure White Light Theme Surface, Border & Typography Overrides */
+[data-theme="blueprint-light"] .bg-[#020617],
+[data-theme="blueprint-light"] .bg-[#070b14],
+[data-theme="blueprint-light"] .bg-[#0e1626],
+[data-theme="blueprint-light"] .bg-[#0a101d],
+[data-theme="blueprint-light"] .bg-[#030712],
+[data-theme="blueprint-light"] .bg-[#020d07],
+[data-theme="blueprint-light"] .bg-[#0e0714],
+[data-theme="blueprint-light"] .bg-slate-950,
+[data-theme="blueprint-light"] .bg-slate-950\/80,
+[data-theme="blueprint-light"] .bg-slate-950\/90,
+[data-theme="blueprint-light"] .bg-slate-950\/50,
+[data-theme="blueprint-light"] .bg-slate-900,
+[data-theme="blueprint-light"] .bg-slate-900\/90,
+[data-theme="blueprint-light"] .bg-slate-900\/80,
+[data-theme="blueprint-light"] .bg-slate-900\/50,
+[data-theme="blueprint-light"] .bg-slate-900\/40,
+[data-theme="blueprint-light"] .bg-slate-800,
+[data-theme="blueprint-light"] .bg-slate-800\/80,
+[data-theme="blueprint-light"] .bg-slate-800\/50,
+[data-theme="blueprint-light"] .bg-slate-800\/30,
+[data-theme="blueprint-light"] .bg-black,
+[data-theme="blueprint-light"] .bg-black\/20,
+[data-theme="blueprint-light"] .bg-black\/30,
+[data-theme="blueprint-light"] .bg-black\/40,
+[data-theme="blueprint-light"] .bg-black\/50,
+[data-theme="blueprint-light"] .bg-black\/60,
+[data-theme="blueprint-light"] .bg-black\/70,
+[data-theme="blueprint-light"] .bg-black\/80,
+[data-theme="blueprint-light"] .bg-black\/90 {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="blueprint-light"] .bg-white\/5,
+[data-theme="blueprint-light"] .bg-white\/10,
+[data-theme="blueprint-light"] .bg-white\/20 {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="blueprint-light"] .bg-white\/5:hover,
+[data-theme="blueprint-light"] .bg-white\/10:hover,
+[data-theme="blueprint-light"] .bg-white\/20:hover,
+[data-theme="blueprint-light"] .hover\:bg-white\/5:hover,
+[data-theme="blueprint-light"] .hover\:bg-white\/10:hover,
+[data-theme="blueprint-light"] .hover\:bg-slate-800\/50:hover,
+[data-theme="blueprint-light"] .hover\:bg-slate-900:hover {
+  background-color: #e2e8f0 !important;
+}
+
+[data-theme="blueprint-light"] .border-white\/5,
+[data-theme="blueprint-light"] .border-white\/10,
+[data-theme="blueprint-light"] .border-white\/15,
+[data-theme="blueprint-light"] .border-white\/20,
+[data-theme="blueprint-light"] .border-slate-800,
+[data-theme="blueprint-light"] .border-slate-700,
+[data-theme="blueprint-light"] .border-slate-800\/50,
+[data-theme="blueprint-light"] .border-slate-800\/80 {
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="blueprint-light"] .text-slate-100,
+[data-theme="blueprint-light"] .text-slate-200,
+[data-theme="blueprint-light"] .text-white {
+  color: #0f172a !important;
+}
+
+[data-theme="blueprint-light"] .text-slate-300,
+[data-theme="blueprint-light"] .text-slate-400,
+[data-theme="blueprint-light"] .text-slate-500 {
+  color: #475569 !important;
+}
+
+[data-theme="blueprint-light"] .text-cyan-400 {
+  color: #0284c7 !important;
+}
+
+[data-theme="blueprint-light"] .text-emerald-400 {
+  color: #059669 !important;
+}
+
+[data-theme="blueprint-light"] .text-amber-400 {
+  color: #d97706 !important;
+}
+
+[data-theme="blueprint-light"] .text-rose-400 {
+  color: #e11d48 !important;
+}
+
+[data-theme="blueprint-light"] .bg-cyan-500\/10 {
+  background-color: #f0f9ff !important;
+  border-color: #bae6fd !important;
+}
+
+[data-theme="blueprint-light"] .bg-emerald-500\/10 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+
+[data-theme="blueprint-light"] .bg-amber-500\/10 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme="blueprint-light"] .bg-rose-500\/10 {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+[data-theme="blueprint-light"] input,
+[data-theme="blueprint-light"] select,
+[data-theme="blueprint-light"] textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="blueprint-light"] input::placeholder,
+[data-theme="blueprint-light"] textarea::placeholder {
+  color: #94a3b8 !important;
 }
 
 @layer utilities {

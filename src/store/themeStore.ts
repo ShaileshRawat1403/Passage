@@ -102,13 +102,13 @@ export const THEMES: ThemeDefinition[] = [
   },
   {
     id: "blueprint-light",
-    name: "Blueprint Light",
-    tagline: "Crisp architectural light mode",
+    name: "Pure White Light",
+    tagline: "Crisp pure white high-contrast light theme",
     isDark: false,
     colors: {
-      appBg: "#f8fafc",
+      appBg: "#ffffff",
       panelBg: "#ffffff",
-      border: "rgba(37,99,235,0.25)",
+      border: "rgba(203,213,225,0.9)",
       primary: "#2563eb",
       secondary: "#0284c7",
       textMain: "#0f172a",

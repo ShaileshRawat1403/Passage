@@ -84,27 +84,26 @@ export class GeminiAdapter implements LlmProvider {
     };
   }
 
-  async listModels(_config: ResolvedProviderConfig): Promise<ModelDescriptor[]> {
-    return [
-      {
-        id: "gemini-3.6-flash",
-        name: "Gemini 3.6 Flash",
-        description: "Fast and versatile multimodal model",
-        contextWindow: 1048576,
-      },
-      {
-        id: "gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        description: "High performance lightweight model",
-        contextWindow: 1048576,
-      },
-      {
-        id: "gemini-2.5-pro",
-        name: "Gemini 2.5 Pro",
-        description: "Reasoning and complex task model",
-        contextWindow: 2097152,
-      },
-    ];
+  async listModels(config: ResolvedProviderConfig): Promise<ModelDescriptor[]> {
+    try {
+      const client = this.getClient(config);
+      const res = await client.models.list();
+      const models: ModelDescriptor[] = [];
+      for await (const m of res) {
+        if (m.name) {
+          const cleanName = m.name.replace(/^models\//, "");
+          models.push({
+            id: cleanName,
+            name: m.displayName || cleanName,
+            description: m.description,
+            contextWindow: m.inputTokenLimit,
+          });
+        }
+      }
+      return models;
+    } catch (err: unknown) {
+      throw this.normalizeError(err, config);
+    }
   }
 
   async generate(

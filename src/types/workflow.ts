@@ -295,6 +295,7 @@ export interface ConnectionCredential {
   lastTestedAt?: string;
   defaultModel?: string;
   providerId?: string;
+  apiKeyEnvVar?: string;
 }
 
 export interface ReusableComponent {

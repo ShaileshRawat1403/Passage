@@ -94,9 +94,9 @@ export class OpenAICompatibleAdapter implements LlmProvider {
           name: m.id,
         });
       }
-      return models.length > 0 ? models : [{ id: config.defaultModel || "custom-model", name: config.defaultModel || "Custom Model" }];
-    } catch (_err) {
-      return [{ id: config.defaultModel || "custom-model", name: config.defaultModel || "Custom Model" }];
+      return models;
+    } catch (err: unknown) {
+      throw this.normalizeError(err, config);
     }
   }
 

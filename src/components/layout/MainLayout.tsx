@@ -55,7 +55,7 @@ export const MainLayout: React.FC = () => {
       {/* Main Workspace Area */}
       <div className="flex-1 flex overflow-hidden relative z-10">
         {activeTab === "home" && (
-          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             <HomeView />
           </div>
         )}
@@ -76,38 +76,38 @@ export const MainLayout: React.FC = () => {
         {activeTab === "runs" && (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             <SimulationBar />
-            <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+            <div className="flex-1 overflow-y-auto bg-transparent">
               <RunTimeline />
             </div>
           </div>
         )}
 
         {activeTab === "workflows" && (
-          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             <WorkflowListView />
           </div>
         )}
 
         {activeTab === "activity" && (
-          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             <ActivityView />
           </div>
         )}
 
         {activeTab === "connections" && (
-          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             <ConnectionsView />
           </div>
         )}
 
         {activeTab === "components" && (
-          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             <ComponentsView />
           </div>
         )}
 
         {activeTab === "settings" && (
-          <div className="flex-1 overflow-y-auto bg-[#020617]/50">
+          <div className="flex-1 overflow-y-auto bg-transparent">
             <SettingsView />
           </div>
         )}

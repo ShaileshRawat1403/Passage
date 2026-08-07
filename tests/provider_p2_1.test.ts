@@ -425,6 +425,53 @@ describe("P2.1 Provider Adapter Layer Test Suite", () => {
         })
       ).rejects.toThrow();
     });
+
+    it("listModels fails honestly on error without returning static fallbacks", async () => {
+      const registry = new ProviderRegistry(mockSecretResolver);
+      const openaiConn = {
+        id: "conn-openai-fail",
+        name: "OpenAI Fail",
+        type: "agent_provider" as const,
+        service: "openai",
+        status: "configured" as const,
+        apiKeyEnvVar: "TEST_OPENAI_KEY",
+      };
+
+      const openaiAdapter = registry.getProvider("openai");
+      vi.spyOn(openaiAdapter as any, "getClient").mockReturnValue({
+        models: {
+          list: vi.fn().mockRejectedValueOnce(new Error("401 Unauthorized API key")),
+        },
+      });
+
+      await expect(registry.listModels(openaiConn)).rejects.toSatisfy((err: unknown) => {
+        return err instanceof ProviderError && err.code === "AUTHENTICATION_FAILED";
+      });
+    });
+
+    it("testConnection redacts resolved API keys at registry boundary", async () => {
+      const registry = new ProviderRegistry(mockSecretResolver);
+      const conn = {
+        id: "conn-leak-test",
+        name: "Leak Test",
+        type: "agent_provider" as const,
+        service: "openai",
+        status: "configured" as const,
+        apiKeyEnvVar: "TEST_OPENAI_KEY", // resolves to 'valid-openai-key'
+      };
+
+      const openaiAdapter = registry.getProvider("openai");
+      vi.spyOn(openaiAdapter, "testConnection").mockResolvedValueOnce({
+        status: "unreachable",
+        checkedAt: new Date().toISOString(),
+        provider: "openai",
+        message: "Failed connecting with key: valid-openai-key",
+      });
+
+      const health = await registry.testConnection(conn);
+      expect(health.message).not.toContain("valid-openai-key");
+      expect(health.message).toContain("[REDACTED_SECRET]");
+    });
   });
 
   describe("8. Runtime Workflow Isolation & No-Fake-Success", () => {

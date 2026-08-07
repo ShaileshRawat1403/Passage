@@ -109,6 +109,8 @@ const WorkflowCanvasInner: React.FC = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   const isUpdatingFromStoreRef = React.useRef(false);
+  const isDraggingRef = React.useRef(false);
+  const justDraggedRef = React.useRef(false);
 
   // Sync React Flow state when store activeWorkflow changes
   React.useEffect(() => {
@@ -122,10 +124,19 @@ const WorkflowCanvasInner: React.FC = () => {
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
   // Handle Dragging Node positions
+  const onNodeDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
+
   const onNodeDragStop = useCallback(
     (_event: unknown, node: Node) => {
       if (!activeWorkflow) return;
       updateStatePosition(activeWorkflow.id, node.id, node.position);
+      isDraggingRef.current = false;
+      justDraggedRef.current = true;
+      setTimeout(() => {
+        justDraggedRef.current = false;
+      }, 150);
     },
     [activeWorkflow, updateStatePosition]
   );
@@ -133,18 +144,22 @@ const WorkflowCanvasInner: React.FC = () => {
   // Handle multi-selection change from React Flow box-select / shift-select
   const onSelectionChange = useCallback(
     ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
-      if (isUpdatingFromStoreRef.current) return;
-      setSelectedSelection(
-        nodes.map((n) => n.id),
-        edges.map((e) => e.id)
-      );
+      if (isUpdatingFromStoreRef.current || isDraggingRef.current || justDraggedRef.current) return;
+      // Single node click is handled explicitly by onNodeClick to prevent inspector popping open during drag
+      if (nodes.length > 1 || (edges.length > 0 && nodes.length === 0)) {
+        setSelectedSelection(
+          nodes.map((n) => n.id),
+          edges.map((e) => e.id)
+        );
+      }
     },
     [setSelectedSelection]
   );
 
-  // Handle Node selection
+  // Handle Node selection on explicit click
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
+      if (isDraggingRef.current || justDraggedRef.current) return;
       setSelectedStateId(node.id);
     },
     [setSelectedStateId]
@@ -248,7 +263,10 @@ const WorkflowCanvasInner: React.FC = () => {
   }, [setSelectedStateId, setSelectedTransitionId]);
 
   return (
-    <div className="relative w-full h-full bg-[#020617] overflow-hidden select-none">
+    <div
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{ backgroundColor: "var(--canvas-bg, #020617)" }}
+    >
       <FloatingCanvasToolbar />
       <FloatingStateInspector />
 
@@ -262,11 +280,13 @@ const WorkflowCanvasInner: React.FC = () => {
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         onSelectionChange={onSelectionChange}
+        onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onConnect={onConnect}
         onPaneClick={onPaneClick}
+        selectNodesOnDrag={false}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.2}
@@ -278,9 +298,9 @@ const WorkflowCanvasInner: React.FC = () => {
         defaultEdgeOptions={{ type: "customEdge" }}
         className="stateflow-canvas"
       >
-        <Background variant={BackgroundVariant.Dots} gap={32} size={1.5} color="rgba(255, 255, 255, 0.08)" />
+        <Background variant={BackgroundVariant.Dots} gap={32} size={1.5} color="var(--grid-dots, rgba(255, 255, 255, 0.08))" />
         <Controls
-          className="!bg-black/60 !backdrop-blur-xl !border-white/15 !text-slate-100 !rounded-xl !shadow-2xl"
+          className="!bg-[var(--control-bg,#0e1626)] !backdrop-blur-xl !border-[var(--control-border,rgba(255,255,255,0.15))] !text-[var(--control-text,#f8fafc)] !rounded-xl !shadow-2xl"
           showInteractive={false}
         />
         <MiniMap
@@ -300,8 +320,8 @@ const WorkflowCanvasInner: React.FC = () => {
                 return "#475569";
             }
           }}
-          maskColor="rgba(2, 6, 23, 0.85)"
-          className="!bg-black/60 !backdrop-blur-xl !border-white/15 !rounded-xl overflow-hidden shadow-2xl"
+          maskColor="var(--canvas-mask, rgba(2, 6, 23, 0.85))"
+          className="!bg-[var(--control-bg,#0e1626)] !backdrop-blur-xl !border-[var(--control-border,rgba(255,255,255,0.15))] !rounded-xl overflow-hidden shadow-2xl"
         />
       </ReactFlow>
     </div>

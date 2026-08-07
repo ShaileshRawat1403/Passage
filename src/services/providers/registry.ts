@@ -141,8 +141,12 @@ export class ProviderRegistry {
     const config = await this.resolveConfig(connection, secretResolver);
     const provider = this.getProvider(config.provider);
     try {
-      const res = await provider.testConnection(config);
-      return ProviderHealthSchema.parse(res);
+      const rawRes = await provider.testConnection(config);
+      const res = ProviderHealthSchema.parse(rawRes);
+      if (res.message && config.apiKey && config.apiKey.length > 3) {
+        res.message = res.message.split(config.apiKey).join("[REDACTED_SECRET]");
+      }
+      return res;
     } catch (err: unknown) {
       const sanitized = sanitizeProviderError(err, config.provider, [config.apiKey]);
       return {
@@ -171,8 +175,12 @@ export class ProviderRegistry {
   ): Promise<ModelDescriptor[]> {
     const config = await this.resolveConfig(connection, secretResolver);
     const provider = this.getProvider(config.provider);
-    const models = await provider.listModels(config);
-    return z.array(ModelDescriptorSchema).parse(models);
+    try {
+      const models = await provider.listModels(config);
+      return z.array(ModelDescriptorSchema).parse(models);
+    } catch (err: unknown) {
+      throw sanitizeProviderError(err, config.provider, [config.apiKey]);
+    }
   }
 
   async generate(

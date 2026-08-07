@@ -85,17 +85,9 @@ export class OpenAIAdapter implements LlmProvider {
           });
         }
       }
-      return models.length > 0
-        ? models
-        : [
-            { id: "gpt-4o", name: "GPT-4o" },
-            { id: "gpt-4o-mini", name: "GPT-4o Mini" },
-          ];
-    } catch (_err) {
-      return [
-        { id: "gpt-4o", name: "GPT-4o" },
-        { id: "gpt-4o-mini", name: "GPT-4o Mini" },
-      ];
+      return models;
+    } catch (err: unknown) {
+      throw this.normalizeError(err, config);
     }
   }
 

@@ -85,11 +85,11 @@ export class OllamaAdapter implements LlmProvider {
       });
 
       if (!res.ok) {
-        return [{ id: config.defaultModel || "llama3", name: config.defaultModel || "Llama 3" }];
+        throw new Error(`Ollama HTTP ${res.status}: ${res.statusText}`);
       }
 
       const data = (await res.json()) as { models?: Array<{ name: string; details?: { parameter_size?: string } }> };
-      if (Array.isArray(data.models) && data.models.length > 0) {
+      if (Array.isArray(data.models)) {
         return data.models.map((m) => ({
           id: m.name,
           name: m.name,
@@ -97,9 +97,9 @@ export class OllamaAdapter implements LlmProvider {
         }));
       }
 
-      return [{ id: config.defaultModel || "llama3", name: config.defaultModel || "Llama 3" }];
-    } catch (_err) {
-      return [{ id: config.defaultModel || "llama3", name: config.defaultModel || "Llama 3" }];
+      return [];
+    } catch (err: unknown) {
+      throw this.normalizeError(err, baseUrl);
     }
   }
 

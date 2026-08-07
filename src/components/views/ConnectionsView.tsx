@@ -40,15 +40,6 @@ const PROVIDER_PRESETS = [
     badge: "Multimodal AI",
     description: "Google Gemini generative API endpoint template for structured action execution.",
   },
-  {
-    id: "anthropic",
-    name: "Anthropic Claude",
-    service: "https://api.anthropic.com/v1",
-    type: "agent_provider" as const,
-    defaultModel: "claude-3-5-sonnet-20240620",
-    badge: "Enterprise AI",
-    description: "Anthropic Claude API template for complex reasoning and structured JSON output actions.",
-  },
 ];
 
 export const ConnectionsView: React.FC = () => {
@@ -60,7 +51,7 @@ export const ConnectionsView: React.FC = () => {
   const [name, setName] = useState("OpenAI Provider Config");
   const [service, setService] = useState("https://api.openai.com/v1");
   const [model, setModel] = useState("gpt-4o");
-  const [apiKey, setApiKey] = useState("");
+  const [apiKeyEnvVar, setApiKeyEnvVar] = useState("OPENAI_API_KEY");
 
   const handleSelectPreset = (presetId: string) => {
     setSelectedPreset(presetId);
@@ -69,6 +60,12 @@ export const ConnectionsView: React.FC = () => {
       setName(preset.name);
       setService(preset.service);
       setModel(preset.defaultModel);
+      if (presetId === "openai") setApiKeyEnvVar("OPENAI_API_KEY");
+      else if (presetId === "gemini") setApiKeyEnvVar("GEMINI_API_KEY");
+      else if (presetId === "openrouter") setApiKeyEnvVar("OPENROUTER_API_KEY");
+      else setApiKeyEnvVar(`${presetId.toUpperCase()}_API_KEY`);
+    } else {
+      setApiKeyEnvVar("CUSTOM_API_KEY");
     }
   };
 
@@ -117,19 +114,20 @@ export const ConnectionsView: React.FC = () => {
       lastTestedAt: new Date().toISOString(),
       defaultModel: model,
       providerId: selectedPreset,
+      apiKeyEnvVar: apiKeyEnvVar.trim() || `${selectedPreset.toUpperCase()}_API_KEY`,
     });
 
     // Log activity
     useWorkflowStore.getState().addActivityLog({
       category: "connection",
       action: "Provider Connection Template Configured",
-      details: `Configured template '${name}' (${service}) with default model '${model}'.`,
+      details: `Configured template '${name}' (${service}) with default model '${model}' and secret ref '${apiKeyEnvVar}'.`,
       severity: "info",
     });
 
     setName("");
     setService("");
-    setApiKey("");
+    setApiKeyEnvVar("OPENAI_API_KEY");
     setShowAdd(false);
   };
 
@@ -441,20 +439,20 @@ export const ConnectionsView: React.FC = () => {
             ) : (
               <div>
                 <label className="block text-slate-400 font-mono mb-1 text-[10px] uppercase tracking-wider">
-                  Secret Key Reference (P2.0 Secret Manager)
+                  Secret Reference (Environment Variable / Secret Manager Key)
                 </label>
                 <div className="relative">
                   <Key className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-..."
+                    type="text"
+                    value={apiKeyEnvVar}
+                    onChange={(e) => setApiKeyEnvVar(e.target.value)}
+                    placeholder="e.g. OPENAI_API_KEY"
                     className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 outline-none text-xs focus:border-cyan-400 font-mono"
                   />
                 </div>
                 <p className="text-[10px] font-mono text-slate-500 mt-1">
-                  Credentials will map to GCP Secret Manager references in P2.0. Never logged or stored unencrypted.
+                  Specifies the environment variable or Secret Manager key containing the credential. Secrets are resolved server-side and never exposed to client or browser.
                 </p>
               </div>
             )}
