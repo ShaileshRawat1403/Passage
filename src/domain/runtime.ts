@@ -59,6 +59,7 @@ export function createWorkflowRun(
     workflowVersion: workflow.version,
     status: "active",
     currentStateId: startState.id,
+    revision: 1,
     context: mergedContext,
     history: [
       {

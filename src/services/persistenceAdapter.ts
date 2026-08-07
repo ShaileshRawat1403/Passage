@@ -32,6 +32,16 @@ export interface SaveRunBatchOptions {
   activity?: WorkspaceActivity;
   idempotencyKey?: string;
   idempotencyResponse?: Record<string, unknown>;
+  expectedRevision?: number;
+}
+
+export interface PublishVersionAtomicOptions {
+  workflowId: string;
+  version: string;
+  definition: WorkflowDefinition;
+  activity: WorkspaceActivity;
+  idempotencyKey?: string;
+  idempotencyResponse?: Record<string, unknown>;
 }
 
 export interface IPersistenceAdapter {
@@ -49,6 +59,10 @@ export interface IPersistenceAdapter {
     workflowId: string,
     version: string
   ): Promise<WorkflowDefinition | null>;
+
+  publishWorkflowVersionAtomic(
+    options: PublishVersionAtomicOptions
+  ): Promise<WorkflowDefinition>;
 
   saveWorkflowRun(run: WorkflowRun): Promise<WorkflowRun>;
   getWorkflowRun(runId: string): Promise<WorkflowRun | null>;
@@ -161,6 +175,49 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     return validated.definition;
   }
 
+  async publishWorkflowVersionAtomic(
+    options: PublishVersionAtomicOptions
+  ): Promise<WorkflowDefinition> {
+    const versionKey = `${options.workflowId}_v${options.version}`;
+    if (this.versions.has(versionKey)) {
+      throw new Error(
+        `Version '${options.version}' already published for workflow '${options.workflowId}' and is immutable.`
+      );
+    }
+
+    const versionEntity: WorkflowVersionEntity = {
+      id: versionKey,
+      workflowId: options.workflowId,
+      version: options.version,
+      definition: options.definition,
+      createdAt: new Date().toISOString(),
+    };
+
+    const validatedHead = WorkflowEntitySchema.parse({
+      id: options.workflowId,
+      name: options.definition.name,
+      description: options.definition.description || "",
+      currentVersion: options.version,
+      status: "published",
+      headDefinition: options.definition,
+      createdAt: options.definition.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    this.versions.set(versionKey, WorkflowVersionEntitySchema.parse(versionEntity));
+    this.workflows.set(options.workflowId, validatedHead);
+
+    if (options.activity) {
+      await this.appendWorkspaceActivity(options.activity);
+    }
+
+    if (options.idempotencyKey) {
+      await this.completeIdempotency(options.idempotencyKey, options.idempotencyResponse);
+    }
+
+    return validatedHead.headDefinition;
+  }
+
   async saveWorkflowRun(run: WorkflowRun): Promise<WorkflowRun> {
     const validated = WorkflowRunSchema.parse({
       ...run,
@@ -214,8 +271,19 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   }
 
   async saveRunAndEventsBatch(options: SaveRunBatchOptions): Promise<WorkflowRun> {
+    const existingRun = this.runs.get(options.run.id);
+    if (existingRun && options.expectedRevision !== undefined) {
+      const currentRev = existingRun.revision || 1;
+      if (currentRev !== options.expectedRevision) {
+        throw new Error(
+          `Concurrency conflict: Workflow run '${options.run.id}' revision mismatch (expected ${options.expectedRevision}, found ${currentRev}).`
+        );
+      }
+    }
+
     const validatedRun = WorkflowRunSchema.parse({
       ...options.run,
+      revision: options.run.revision || (existingRun ? (existingRun.revision || 1) + 1 : 1),
       lastEventAt: options.run.lastEventAt || new Date().toISOString(),
     });
 
@@ -288,16 +356,17 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
   ): Promise<IdempotencyCheckResult> {
     const existing = this.idempotencyRecords.get(key);
     if (existing) {
+      if (
+        requestHash &&
+        existing.requestHash &&
+        existing.requestHash !== requestHash
+      ) {
+        throw new Error(
+          `Idempotency key conflict: key '${key}' was already used with a different request payload.`
+        );
+      }
+
       if (existing.status === "completed") {
-        if (
-          requestHash &&
-          existing.requestHash &&
-          existing.requestHash !== requestHash
-        ) {
-          throw new Error(
-            `Idempotency key conflict: key '${key}' was already used with a different request payload.`
-          );
-        }
         return { isDuplicate: true, inProgress: false, record: existing };
       }
 
@@ -472,6 +541,86 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
     return validated.definition;
   }
 
+  async publishWorkflowVersionAtomic(
+    options: PublishVersionAtomicOptions
+  ): Promise<WorkflowDefinition> {
+    const versionKey = `${options.workflowId}_v${options.version}`;
+    const versionRef = this.db.collection("workflow_versions").doc(versionKey);
+    const headRef = this.db.collection("workflows").doc(options.workflowId);
+    const actRef = options.activity
+      ? this.db.collection("workspace_activity").doc(options.activity.id)
+      : null;
+    const idempRef = options.idempotencyKey
+      ? this.db.collection("idempotency_records").doc(options.idempotencyKey)
+      : null;
+
+    return await this.db.runTransaction(async (transaction) => {
+      // 1. ALL READS FIRST
+      const versionSnap = await transaction.get(versionRef);
+      const headSnap = await transaction.get(headRef);
+      const actSnap = actRef ? await transaction.get(actRef) : null;
+      const idempSnap = idempRef ? await transaction.get(idempRef) : null;
+
+      // 2. VALIDATIONS
+      if (versionSnap.exists) {
+        throw new Error(
+          `Version '${options.version}' already published for workflow '${options.workflowId}' and is immutable.`
+        );
+      }
+      if (!headSnap.exists) {
+        throw new Error(`Workflow '${options.workflowId}' not found.`);
+      }
+      if (actSnap && actSnap.exists) {
+        throw new Error(
+          `Workspace activity with ID '${options.activity.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
+
+      const versionEntity: WorkflowVersionEntity = {
+        id: versionKey,
+        workflowId: options.workflowId,
+        version: options.version,
+        definition: options.definition,
+        createdAt: new Date().toISOString(),
+      };
+
+      const headData = WorkflowEntitySchema.parse(headSnap.data());
+      const updatedHeadDefinition: WorkflowDefinition = {
+        ...options.definition,
+        version: options.version,
+        status: "published",
+        updatedAt: new Date().toISOString(),
+      };
+
+      const updatedHeadEntity = WorkflowEntitySchema.parse({
+        ...headData,
+        currentVersion: options.version,
+        status: "published",
+        headDefinition: updatedHeadDefinition,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // 3. ALL WRITES AFTER READS
+      transaction.set(versionRef, WorkflowVersionEntitySchema.parse(versionEntity));
+      transaction.set(headRef, updatedHeadEntity);
+
+      if (actRef && options.activity) {
+        const validatedAct = WorkspaceActivityEntitySchema.parse(options.activity);
+        transaction.set(actRef, validatedAct);
+      }
+
+      if (idempRef && idempSnap && idempSnap.exists) {
+        const record = IdempotencyRecordSchema.parse(idempSnap.data());
+        record.status = "completed";
+        record.response = options.idempotencyResponse;
+        record.completedAt = new Date().toISOString();
+        transaction.set(idempRef, record);
+      }
+
+      return updatedHeadDefinition;
+    });
+  }
+
   async saveWorkflowRun(run: WorkflowRun): Promise<WorkflowRun> {
     const validated = WorkflowRunSchema.parse({
       ...run,
@@ -545,49 +694,82 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
 
   async saveRunAndEventsBatch(options: SaveRunBatchOptions): Promise<WorkflowRun> {
     const runRef = this.db.collection("workflow_runs").doc(options.run.id);
+    const eventItems = options.newEvents.map((ev) => ({
+      ref: this.db.collection("run_events").doc(ev.id),
+      event: ev,
+    }));
+    const actRef = options.activity
+      ? this.db.collection("workspace_activity").doc(options.activity.id)
+      : null;
+    const idempRef = options.idempotencyKey
+      ? this.db.collection("idempotency_records").doc(options.idempotencyKey)
+      : null;
 
     return await this.db.runTransaction(async (transaction) => {
+      // 1. ALL READS FIRST
+      const runSnap = await transaction.get(runRef);
+
+      const eventSnaps = await Promise.all(
+        eventItems.map(async (item) => ({
+          snap: await transaction.get(item.ref),
+          item,
+        }))
+      );
+
+      const actSnap = actRef ? await transaction.get(actRef) : null;
+      const idempSnap = idempRef ? await transaction.get(idempRef) : null;
+
+      // 2. VALIDATIONS & CALCULATIONS
+      if (runSnap.exists && options.expectedRevision !== undefined) {
+        const existingRunData = WorkflowRunSchema.parse(runSnap.data());
+        const currentRev = existingRunData.revision || 1;
+        if (currentRev !== options.expectedRevision) {
+          throw new Error(
+            `Concurrency conflict: Workflow run '${options.run.id}' revision mismatch (expected ${options.expectedRevision}, found ${currentRev}).`
+          );
+        }
+      }
+
+      for (const { snap, item } of eventSnaps) {
+        if (snap.exists) {
+          throw new Error(
+            `Run event with ID '${item.event.id}' already exists and cannot be overwritten (append-only violation).`
+          );
+        }
+      }
+
+      if (actSnap && actSnap.exists) {
+        throw new Error(
+          `Workspace activity with ID '${options.activity!.id}' already exists and cannot be overwritten (append-only violation).`
+        );
+      }
+
+      const existingRunData = runSnap.exists ? WorkflowRunSchema.parse(runSnap.data()) : null;
       const validatedRun = WorkflowRunSchema.parse({
         ...options.run,
+        revision: options.run.revision || (existingRunData ? (existingRunData.revision || 1) + 1 : 1),
         lastEventAt: options.run.lastEventAt || new Date().toISOString(),
       });
 
-      for (const ev of options.newEvents) {
-        const eventRef = this.db.collection("run_events").doc(ev.id);
-        const eventSnap = await transaction.get(eventRef);
-        if (eventSnap.exists) {
-          throw new Error(
-            `Run event with ID '${ev.id}' already exists and cannot be overwritten (append-only violation).`
-          );
-        }
-        const validatedEv = RunEventEntitySchema.parse(ev);
-        transaction.set(eventRef, validatedEv);
+      // 3. ALL WRITES AFTER READS
+      for (const { item } of eventSnaps) {
+        const validatedEv = RunEventEntitySchema.parse(item.event);
+        transaction.set(item.ref, validatedEv);
       }
 
       transaction.set(runRef, validatedRun);
 
-      if (options.activity) {
-        const actRef = this.db.collection("workspace_activity").doc(options.activity.id);
-        const actSnap = await transaction.get(actRef);
-        if (actSnap.exists) {
-          throw new Error(
-            `Workspace activity with ID '${options.activity.id}' already exists and cannot be overwritten (append-only violation).`
-          );
-        }
+      if (actRef && options.activity) {
         const validatedAct = WorkspaceActivityEntitySchema.parse(options.activity);
         transaction.set(actRef, validatedAct);
       }
 
-      if (options.idempotencyKey) {
-        const idempRef = this.db.collection("idempotency_records").doc(options.idempotencyKey);
-        const idempSnap = await transaction.get(idempRef);
-        if (idempSnap.exists) {
-          const record = IdempotencyRecordSchema.parse(idempSnap.data());
-          record.status = "completed";
-          record.response = options.idempotencyResponse;
-          record.completedAt = new Date().toISOString();
-          transaction.set(idempRef, record);
-        }
+      if (idempRef && idempSnap && idempSnap.exists) {
+        const record = IdempotencyRecordSchema.parse(idempSnap.data());
+        record.status = "completed";
+        record.response = options.idempotencyResponse;
+        record.completedAt = new Date().toISOString();
+        transaction.set(idempRef, record);
       }
 
       return validatedRun;
@@ -642,16 +824,17 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
       const snap = await transaction.get(docRef);
       if (snap.exists) {
         const record = IdempotencyRecordSchema.parse(snap.data());
+        if (
+          requestHash &&
+          record.requestHash &&
+          record.requestHash !== requestHash
+        ) {
+          throw new Error(
+            `Idempotency key conflict: key '${key}' was already used with a different request payload.`
+          );
+        }
+
         if (record.status === "completed") {
-          if (
-            requestHash &&
-            record.requestHash &&
-            record.requestHash !== requestHash
-          ) {
-            throw new Error(
-              `Idempotency key conflict: key '${key}' was already used with a different request payload.`
-            );
-          }
           return { isDuplicate: true, inProgress: false, record };
         }
 

@@ -264,6 +264,7 @@ export const WorkflowRunSchema = z.strictObject({
   workflowVersion: z.string(),
   status: z.enum(["active", "waiting", "completed", "failed", "cancelled"]),
   currentStateId: z.string(),
+  revision: z.number().optional(),
 
   context: z.record(z.string(), z.unknown()),
   history: z.array(

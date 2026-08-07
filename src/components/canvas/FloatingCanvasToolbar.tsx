@@ -78,12 +78,17 @@ export const FloatingCanvasToolbar: React.FC = () => {
   }, [pastWorkflows.length, futureWorkflows.length, undo, redo]);
 
   // 1. Save Handler
-  const handleSave = () => {
+  const handleSave = async () => {
     updateWorkflow(activeWorkflow.id, (draft) => {
       draft.updatedAt = new Date().toISOString();
     });
-    useWorkflowStore.getState().saveWorkflowToDurableStore(activeWorkflow.id);
-    showToast("Workflow state machine configuration saved!");
+    try {
+      await useWorkflowStore.getState().saveWorkflowToDurableStore(activeWorkflow.id);
+      showToast("Workflow state machine configuration saved to durable store!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Save failed: ${msg}`);
+    }
   };
 
   // 2. Clear Canvas Handler

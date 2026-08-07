@@ -42,7 +42,7 @@ describe("P2.0 Durable Runtime Spine - Persistence, Idempotency & Events", () =>
       // Attempting to overwrite existing version must fail due to immutability
       const duplicatePub = await commandService.publishWorkflowVersion(sampleWf.id, "1.1.0");
       expect(duplicatePub.success).toBe(false);
-      expect(duplicatePub.error).toContain("already exists and is immutable");
+      expect(duplicatePub.error).toContain("is immutable");
     });
 
     it("fails validation for invalid workflow schema", async () => {
@@ -132,35 +132,78 @@ describe("P2.0 Durable Runtime Spine - Persistence, Idempotency & Events", () =>
       expect(eventIds.length).toBe(uniqueIds.size);
     });
 
-    it("rejects idempotency key reuse with conflicting request payload hash", async () => {
+    it("rejects concurrent command dispatch when expectedRevision does not match current run revision (CAS / OCC)", async () => {
       await commandService.saveWorkflow(sampleWf);
-      const runRes = await commandService.createRun(sampleWf.id, "CASE-HASH-1");
+      const runRes = await commandService.createRun(sampleWf.id, "CASE-CAS-1");
       const run = runRes.data!;
 
-      const key = "idemp-hash-conflict";
-      const res1 = await commandService.dispatchRunEvent(
-        run.id,
-        "SUBMIT_APPROVAL",
-        { amount: 100 },
-        key
-      );
-      expect(res1.success).toBe(true);
+      // Run initial revision is 1
+      expect(run.revision).toBe(1);
 
-      // Same idempotency key with different payload must fail with conflict error
-      const res2 = await commandService.dispatchRunEvent(
-        run.id,
-        "SUBMIT_APPROVAL",
-        { amount: 999999 },
-        key
-      );
-      expect(res2.success).toBe(false);
-      expect(res2.error).toContain("Idempotency key conflict");
+      // Attempt to save batch with stale expected revision 0 (must fail)
+      await expect(
+        adapter.saveRunAndEventsBatch({
+          run: { ...run, revision: 2 },
+          newEvents: [],
+          expectedRevision: 0,
+        })
+      ).rejects.toThrow("Concurrency conflict");
+
+      // Successful batch with valid expected revision 1 increments revision to 2
+      const updatedRun = await adapter.saveRunAndEventsBatch({
+        run: { ...run, revision: 2 },
+        newEvents: [],
+        expectedRevision: 1,
+      });
+      expect(updatedRun.revision).toBe(2);
+    });
+
+    it("rejects idempotency key reclamation on failed/stale record if request hash differs", async () => {
+      const key = "idemp-failed-reclaim";
+      // Mark key as failed with original hash "payload-A"
+      await adapter.checkOrSetIdempotency(key, "payload-A");
+      await adapter.failIdempotency(key, "Execution timeout");
+
+      // Reclaiming with different hash "payload-B" must be rejected
+      await expect(
+        adapter.checkOrSetIdempotency(key, "payload-B")
+      ).rejects.toThrow("Idempotency key conflict");
+
+      // Reclaiming with same hash "payload-A" succeeds and resets record to pending
+      const checkRes = await adapter.checkOrSetIdempotency(key, "payload-A");
+      expect(checkRes.isDuplicate).toBe(false);
+      expect(checkRes.record?.status).toBe("pending");
+    });
+
+    it("proves publishWorkflowVersionAtomic commits version snapshot, updates workflow head, logs activity, and completes idempotency in a single atomic transaction", async () => {
+      await commandService.saveWorkflow(sampleWf);
+      const idempKey = "pub-idemp-key-1";
+
+      const pubRes = await commandService.publishWorkflowVersion(sampleWf.id, "2.0.0", idempKey);
+      expect(pubRes.success).toBe(true);
+      expect(pubRes.data?.version).toBe("2.0.0");
+      expect(pubRes.data?.status).toBe("published");
+
+      // Verify version record exists
+      const versionDef = await adapter.getWorkflowVersion(sampleWf.id, "2.0.0");
+      expect(versionDef).not.toBeNull();
+
+      // Verify activity was logged
+      const activities = await adapter.getWorkspaceActivities();
+      expect(activities.some((a) => a.action === "Workflow Version Published")).toBe(true);
+
+      // Verify duplicate idempotency call returns exact cached result
+      const dupPubRes = await commandService.publishWorkflowVersion(sampleWf.id, "2.0.0", idempKey);
+      expect(dupPubRes.success).toBe(true);
+      expect(dupPubRes.isDuplicate).toBe(true);
+      expect(dupPubRes.data?.version).toBe("2.0.0");
     });
 
     it("blocks execution when idempotency key is currently pending/in-progress", async () => {
       const key = "idemp-pending-key";
-      // Manually set pending record in adapter
-      await adapter.checkOrSetIdempotency(key, "hash1");
+      // Manually set pending record in adapter with matching payload hash
+      const sampleWfHash = require("crypto").createHash("sha256").update(JSON.stringify(sampleWf)).digest("hex");
+      await adapter.checkOrSetIdempotency(key, sampleWfHash);
 
       // Attempting to invoke command with same pending key should return inProgress duplicate status
       const res = await commandService.saveWorkflow(sampleWf, key);

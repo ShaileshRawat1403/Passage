@@ -142,28 +142,26 @@ export class CommandService {
         updatedAt: new Date().toISOString(),
       };
 
-      await this.adapter.saveWorkflowVersion(workflowId, version, updatedHead);
-      const savedHead = await this.adapter.saveWorkflowHead(updatedHead);
-
       const activity: WorkspaceActivity = {
         id: `act-wf-pub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         timestamp: new Date().toISOString(),
         category: "designer_edit",
         action: "Workflow Version Published",
-        workflowId: savedHead.id,
-        workflowName: savedHead.name,
-        details: `Published immutable workflow version ${version} for ${savedHead.name}.`,
+        workflowId: updatedHead.id,
+        workflowName: updatedHead.name,
+        details: `Published immutable workflow version ${version} for ${updatedHead.name}.`,
         severity: "success",
         isDemo: false,
       };
-      await this.adapter.appendWorkspaceActivity(activity);
 
-      if (idempotencyKey) {
-        await this.adapter.completeIdempotency(
-          idempotencyKey,
-          savedHead as unknown as Record<string, unknown>
-        );
-      }
+      const savedHead = await this.adapter.publishWorkflowVersionAtomic({
+        workflowId,
+        version,
+        definition: updatedHead,
+        activity,
+        idempotencyKey,
+        idempotencyResponse: updatedHead as unknown as Record<string, unknown>,
+      });
 
       return { success: true, data: savedHead };
     } catch (err: unknown) {
@@ -306,6 +304,7 @@ export class CommandService {
         return { success: false, error: errMsg };
       }
 
+      const currentRev = run.revision || 1;
       const prevAuditCount = run.auditTrail.length;
 
       const result = dispatchWorkflowEvent(wf, run, {
@@ -345,6 +344,7 @@ export class CommandService {
 
       const finalUpdatedRun: WorkflowRun = {
         ...result.updatedRun,
+        revision: currentRev + 1,
         auditTrail: fullAuditTrail,
       };
 
@@ -356,6 +356,7 @@ export class CommandService {
         activity,
         idempotencyKey,
         idempotencyResponse: responsePayload as unknown as Record<string, unknown>,
+        expectedRevision: currentRev,
       });
 
       return {

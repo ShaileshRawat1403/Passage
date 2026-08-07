@@ -1311,22 +1311,20 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     const wf = get().workflows.find((w) => w.id === activeId);
     if (!wf || !isBrowserApiAvailable()) return;
 
-    try {
-      const idempKey = `save-wf-${activeId}-${Date.now()}`;
-      const res = await fetch("/api/workflows", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-idempotency-key": idempKey,
-        },
-        body: JSON.stringify(wf),
-      });
-      if (res.ok) {
-        await get().hydrateFromDurableStore();
-      }
-    } catch (err) {
-      console.warn("Failed to save workflow to durable store:", err);
+    const idempKey = `save-wf-${activeId}-${Date.now()}`;
+    const res = await fetch("/api/workflows", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-idempotency-key": idempKey,
+      },
+      body: JSON.stringify(wf),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `Failed to save workflow to durable store (HTTP ${res.status})`);
     }
+    await get().hydrateFromDurableStore();
   },
 
   hydrateFromDurableStore: async () => {
@@ -1350,13 +1348,13 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
           }
         }
       }
-      if (runRes && Array.isArray(runRes.runs) && runRes.runs.length > 0) {
+      if (runRes && Array.isArray(runRes.runs)) {
         updates.activeRuns = runRes.runs;
       }
-      if (actRes && Array.isArray(actRes.activities) && actRes.activities.length > 0) {
+      if (actRes && Array.isArray(actRes.activities)) {
         updates.activityLogs = actRes.activities;
       }
-      if (connRes && Array.isArray(connRes.connections) && connRes.connections.length > 0) {
+      if (connRes && Array.isArray(connRes.connections)) {
         updates.connections = connRes.connections;
       }
 

@@ -249,6 +249,7 @@ export interface WorkflowRun {
   workflowVersion: string;
   status: "active" | "waiting" | "completed" | "failed" | "cancelled";
   currentStateId: string;
+  revision?: number;
 
   context: Record<string, unknown>;
   history: {
