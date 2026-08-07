@@ -72,6 +72,40 @@ export const ConnectionsView: React.FC = () => {
     }
   };
 
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { status: string; message?: string; latencyMs?: number }>>({});
+
+  const handleTestConnection = async (connectionId: string) => {
+    setTestingId(connectionId);
+    try {
+      const res = await fetch(`/api/providers/${connectionId}/test`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        [connectionId]: {
+          status: data.status || (res.ok ? "verified" : "failed"),
+          message: data.message || data.error,
+          latencyMs: data.latencyMs,
+        },
+      }));
+      if (res.ok) {
+        useWorkflowStore.getState().hydrateFromDurableStore();
+      }
+    } catch (err) {
+      setTestResults((prev) => ({
+        ...prev,
+        [connectionId]: {
+          status: "failed",
+          message: String(err),
+        },
+      }));
+    } finally {
+      setTestingId(null);
+    }
+  };
+
   const handleAdd = () => {
     if (!name.trim()) return;
     addConnection({
@@ -268,10 +302,47 @@ export const ConnectionsView: React.FC = () => {
                   </div>
                 </div>
 
+                {(() => {
+                  const result = testResults[c.id];
+                  if (!result) return null;
+                  return (
+                    <div className={`p-2.5 rounded-xl border text-[11px] font-mono leading-tight ${
+                      result.status === "verified"
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                        : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+                    }`}>
+                      <div className="font-bold flex items-center justify-between">
+                        <span>Status: {result.status}</span>
+                        {result.latencyMs !== undefined && (
+                          <span>{result.latencyMs}ms</span>
+                        )}
+                      </div>
+                      {result.message && (
+                        <p className="mt-1 opacity-90 font-sans text-[10px] break-all">{result.message}</p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-400">
                   <span className="text-slate-400 font-mono text-[10px]">
-                    Testing becomes available with the P2 provider adapter
+                    Provider Adapter Layer Active
                   </span>
+
+                  <button
+                    onClick={() => handleTestConnection(c.id)}
+                    disabled={testingId === c.id}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold font-mono text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {testingId === c.id ? (
+                      <span>Testing Endpoint...</span>
+                    ) : (
+                      <>
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>Test Connection</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             );

@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
-import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
 import { parseWorkflowDefinition } from "./src/domain/parser";
@@ -13,22 +12,6 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: "10mb" }));
-
-  // Initialize Gemini AI client lazily/safely
-  const getGeminiClient = () => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured");
-    }
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-  };
 
   // API Health Check
   app.get("/api/health", (_req, res) => {
@@ -216,6 +199,97 @@ async function startServer() {
     }
   });
 
+  // P2.1 Provider API Routes
+  app.post("/api/providers/:connectionId/test", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      const connection = connections.find((c) => c.id === req.params.connectionId);
+      if (!connection) {
+        res.status(404).json({ error: `Connection '${req.params.connectionId}' not found.` });
+        return;
+      }
+
+      const { providerRegistry } = await import("./src/services/providers/registry");
+      const health = await providerRegistry.testConnection(connection);
+      
+      // Update connection status in persistence if changed
+      const newStatus = health.status === "verified" ? "verified" : "failed";
+      if (connection.status !== newStatus) {
+        connection.status = newStatus;
+        await adapter.saveConnection(connection);
+      }
+
+      res.json(health);
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/providers/:connectionId/models", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      const connection = connections.find((c) => c.id === req.params.connectionId);
+      if (!connection) {
+        res.status(404).json({ error: `Connection '${req.params.connectionId}' not found.` });
+        return;
+      }
+
+      const { providerRegistry } = await import("./src/services/providers/registry");
+      const models = await providerRegistry.listModels(connection);
+      res.json({ models });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/providers/:connectionId/capabilities", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      const connection = connections.find((c) => c.id === req.params.connectionId);
+      if (!connection) {
+        res.status(404).json({ error: `Connection '${req.params.connectionId}' not found.` });
+        return;
+      }
+
+      const { providerRegistry } = await import("./src/services/providers/registry");
+      const capabilities = await providerRegistry.getCapabilities(connection);
+      res.json({ capabilities });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/providers/:connectionId/generate", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      const connection = connections.find((c) => c.id === req.params.connectionId);
+      if (!connection) {
+        res.status(404).json({ error: `Connection '${req.params.connectionId}' not found.` });
+        return;
+      }
+
+      const { providerRegistry } = await import("./src/services/providers/registry");
+      const llmResponse = await providerRegistry.generate(connection, req.body);
+      res.json(llmResponse);
+    } catch (err: unknown) {
+      const { ProviderError } = await import("./src/domain/providers");
+      if (err instanceof ProviderError) {
+        res.status(err.statusCode || 400).json({
+          error: err.message,
+          code: err.code,
+          provider: err.provider,
+          retryable: err.retryable,
+        });
+        return;
+      }
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // API Route: AI Natural Language Workflow Generator
   app.post("/api/workflow/generate", async (req, res) => {
     try {
@@ -225,15 +299,17 @@ async function startServer() {
         return;
       }
 
-      if (!process.env.GEMINI_API_KEY) {
-        // Fallback or friendly notice if key missing
-        res.status(503).json({
-          error: "Gemini API key is missing in environment variables.",
-        });
-        return;
-      }
+      const { providerRegistry } = await import("./src/services/providers/registry");
+      const defaultGeminiConn = {
+        id: "default-gemini",
+        name: "Default Gemini",
+        type: "agent_provider" as const,
+        service: "gemini" as const,
+        status: "configured" as const,
+        defaultModel: "gemini-3.6-flash",
+        apiKeyEnvVar: "GEMINI_API_KEY",
+      };
 
-      const ai = getGeminiClient();
       const prompt = `You are a workflow architect expert for Passage (a durable visual state-machine workflow engine).
 The user wants to generate a complete workflow based on this description:
 "${description}"
@@ -287,16 +363,13 @@ Output a JSON object matching this TypeScript structure:
 IMPORTANT: Ensure there is exactly 1 'start' state, at least 1 'final' state, valid outgoing transitions for intermediate states, and meaningful state IDs.
 Respond strictly with valid JSON. Do NOT include markdown code blocks.`;
 
-      const response = await ai.models.generateContent({
+      const llmRes = await providerRegistry.generate(defaultGeminiConn, {
         model: "gemini-3.6-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        },
+        messages: [{ role: "user", content: prompt }],
+        responseFormat: { type: "json" },
       });
 
-      const text = response.text || "{}";
-      const parsed = JSON.parse(text);
+      const parsed = (llmRes.output.json || (llmRes.output.text ? JSON.parse(llmRes.output.text) : {})) as any;
       const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
 
       // Validate through Passage boundary parser
@@ -321,49 +394,11 @@ Respond strictly with valid JSON. Do NOT include markdown code blocks.`;
     }
   });
 
-  // API Route: Simulate Agent Execution in Workflow Action
-  app.post("/api/action/agent-execute", async (req, res) => {
-    try {
-      const { agentName, instructions, inputData } = req.body;
-      if (!process.env.GEMINI_API_KEY) {
-        // Mock fallback response
-        res.json({
-          status: "success",
-          output: {
-            riskScore: 12,
-            recommendation: "Low risk detected based on vendor history and PO match.",
-            confidence: 0.94,
-            executedAt: new Date().toISOString(),
-          },
-        });
-        return;
-      }
-
-      const ai = getGeminiClient();
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: `You are an automated AI Agent named "${agentName || "Agent"}".
-Instructions: ${instructions || "Analyze input data and provide risk and recommendation."}
-Input Data: ${JSON.stringify(inputData || {})}
-
-Return a valid JSON object with risk analysis and recommendation.`,
-        config: {
-          responseMimeType: "application/json",
-        },
-      });
-
-      const output = JSON.parse(response.text || "{}");
-      res.json({ status: "success", output });
-    } catch (_err: unknown) {
-      res.json({
-        status: "success",
-        output: {
-          riskScore: 18,
-          recommendation: "Analyzed context; schema and compliance verified.",
-          executedAt: new Date().toISOString(),
-        },
-      });
-    }
+  // API Route: AI Action Execution Placeholder (Governed AI Actions arrive in P2.2)
+  app.post("/api/action/agent-execute", async (_req, res) => {
+    res.status(501).json({
+      error: "Governed AI Actions execution arrives in milestone P2.2.",
+    });
   });
 
   // Vite middleware for dev or Static serve in production
