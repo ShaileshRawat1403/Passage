@@ -80,12 +80,12 @@ export const ActivityView: React.FC = () => {
     });
   };
 
-  // Export logs as JSON audit file
+  // Export logs as JSON activity file
   const handleExportJson = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(filteredLogs, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `passage-activity-audit-${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute("download", `passage-activity-${new Date().toISOString().slice(0, 10)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();

@@ -9,7 +9,7 @@ export const SettingsView: React.FC = () => {
           Governance & Execution Policies
         </h1>
         <p className="text-slate-400 mt-0.5 text-xs">
-          Configure security permissions, audit logging policies, and worker execution backoffs.
+          Configure security permissions, activity logging policies, and worker execution backoffs.
         </p>
       </div>
 
@@ -17,10 +17,10 @@ export const SettingsView: React.FC = () => {
         <div className="p-5 rounded-2xl bg-black/30 backdrop-blur-xl border border-white/10 shadow-xl space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
             <Shield className="w-4 h-4 text-cyan-400" />
-            <span>Audit & Compliance Trail</span>
+            <span>Activity & Compliance Trail</span>
           </div>
           <p className="text-slate-400 text-xs leading-relaxed">
-            Every state entry, action execution, and guard evaluation produces an immutable hash-chained audit event.
+            Every state entry, action execution, and guard evaluation produces an immutable hash-chained activity event.
           </p>
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <span className="text-slate-200">Strict Immutable Mode</span>

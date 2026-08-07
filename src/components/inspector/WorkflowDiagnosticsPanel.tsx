@@ -297,7 +297,7 @@ export const WorkflowDiagnosticsPanel: React.FC = () => {
                   desc: "Ensure default routes exist for decision nodes.",
                 },
                 {
-                  title: "Immutable Audit Log Enforcement",
+                  title: "Immutable Activity Log Enforcement",
                   desc: "Enable immutable record policy across all action executions.",
                 },
               ].map((rec, idx) => (

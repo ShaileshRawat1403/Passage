@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /workflows/{id} {
+      allow read, write: if true;
+    }
+    match /workflow_versions/{id} {
+      allow read, write: if true;
+    }
+    match /workflow_runs/{id} {
+      allow read, write: if true;
+    }
+    match /run_events/{id} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+    match /workspace_activity/{id} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+    match /connections/{id} {
+      allow read, write: if true;
+    }
+    match /idempotency_records/{id} {
+      allow read, write: if true;
+    }
+  }
+}

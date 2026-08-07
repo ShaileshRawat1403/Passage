@@ -53,7 +53,7 @@ Enable users to visually create, understand, repair, and simulate valid Passage 
 
 ### P1.2 — Undo and Redo
 - Definition-level snapshots storing workflow definitions, selection states, and timestamped operation descriptors (`STATE_ADDED`, `TRANSITION_UPDATED`, `AUTO_LAYOUT_APPLIED`, etc.).
-- Excludes runtime runs, active simulation context, and audit logs.
+- Excludes runtime runs, active simulation context, and activity logs.
 
 ### P1.3 — Auto-Layout and Visual Hierarchy
 - Deterministic left-to-right / top-to-bottom layout algorithm.

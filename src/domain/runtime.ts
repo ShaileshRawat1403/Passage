@@ -96,7 +96,7 @@ export function executeStateLifecycle(
   let failedActions = run.failedActionCount;
   let hasFailed = false;
 
-  // 1. Audit State Entry
+  // 1. Activity State Entry
   auditTrail.push({
     id: env.createId("AUDIT"),
     workflowRunId: run.id,
@@ -362,7 +362,7 @@ export function dispatchWorkflowEvent(
   let auditTrail = [...currentRunWithPayload.auditTrail];
   let completedActions = currentRunWithPayload.completedActionCount;
 
-  // 1. Record guard evaluations in audit trail
+  // 1. Record guard evaluations in activity trail
   for (const gRes of plan.guardResults || []) {
     auditTrail.push({
       id: env.createId("AUDIT"),
@@ -507,7 +507,7 @@ export function dispatchWorkflowEvent(
     }
   }
 
-  // 4. Audit State Exit (Only after all exit and transition actions succeed)
+  // 4. Activity State Exit (Only after all exit and transition actions succeed)
   auditTrail.push({
     id: env.createId("AUDIT"),
     workflowRunId: run.id,
@@ -519,7 +519,7 @@ export function dispatchWorkflowEvent(
     metadata: { nextStateId: targetState.id },
   });
 
-  // 5. Audit Transition Taken
+  // 5. Activity Transition Taken
   auditTrail.push({
     id: env.createId("AUDIT"),
     workflowRunId: run.id,

@@ -26,10 +26,10 @@ Milestone **P0 / P0.1 / P0.1B** establishes a mathematically sound, reproducible
 3. **Transactional Ordering & Evidence Closure:**
    - Exit actions and transition actions execute *before* state exit and target state commitment.
    - If an exit action or transition action fails:
-     - `state_exited` and `transition_taken` audit events are **never** recorded.
+     - `state_exited` and `transition_taken` activity events are **never** recorded.
      - `transitionTaken` is returned as `undefined`.
      - The run status flips to `failed` while remaining at the source `currentStateId`.
-     - Audit records truthfully reflect actual execution up to the exact point of failure.
+     - Activity records truthfully reflect actual execution up to the exact point of failure.
 
 4. **Terminal Run Protection:**
    - Completed, failed, and cancelled workflow runs are treated as terminal states.
@@ -55,7 +55,7 @@ Milestone **P0 / P0.1 / P0.1B** establishes a mathematically sound, reproducible
  Bounded Action Executor (Sandbox Simulation)
             │
             ▼
- Transactional State Commitment & Audit
+ Transactional State Commitment & Activity
 ```
 
 ---
@@ -68,8 +68,8 @@ Milestone **P0 / P0.1 / P0.1B** establishes a mathematically sound, reproducible
   - Context isolation & explicit output mappings
   - Fixed clock runtime environment reproducibility
   - Cancelled/Terminal run protection
-  - Exit-action failure transaction rollback & audit sanity
-  - Transition-action failure transaction rollback & audit sanity
+  - Exit-action failure transaction rollback & activity sanity
+  - Transition-action failure transaction rollback & activity sanity
   - Parallel policy mode strictness (`mode: "all"`)
   - Full verification of all bundled sample workflows
 - **Runtime Execution Tests (`src/domain/runtime.test.ts`):** 7 tests
@@ -86,7 +86,7 @@ Milestone **P0 / P0.1 / P0.1B** establishes a mathematically sound, reproducible
 | Strict Schema Ingestion | ✅ Supported | Full structural and type validation |
 | Guard Expressions | ✅ Supported | Bounded JSON path and rule evaluation |
 | Action Pipeline | ✅ Supported | HTTP, Function, and Script action definitions with explicit output mapping |
-| Audit Trail Logging | ✅ Supported | Timestamped, immutable execution audit events |
+| Activity Trail Logging | ✅ Supported | Timestamped, immutable execution activity events |
 | Distributed Persistence | ⏳ Deferred (P2) | Local Zustand / in-memory store only |
 | Advanced Parallel Modes | ⏳ Deferred (P2) | Restricted to deterministic `mode: "all"` |
 

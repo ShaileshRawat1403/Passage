@@ -15,12 +15,16 @@ import { useWorkflowStore } from "../../store/workflowStore";
 import { useThemeStore, THEMES } from "../../store/themeStore";
 
 export const MainLayout: React.FC = () => {
-  const { activeTab } = useWorkflowStore();
+  const { activeTab, hydrateFromDurableStore } = useWorkflowStore();
   const { currentThemeId } = useThemeStore();
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", currentThemeId);
   }, [currentThemeId]);
+
+  useEffect(() => {
+    hydrateFromDurableStore();
+  }, [hydrateFromDurableStore]);
 
   const activeTheme = THEMES.find((t) => t.id === currentThemeId) || THEMES[0];
 

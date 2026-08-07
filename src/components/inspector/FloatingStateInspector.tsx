@@ -502,10 +502,10 @@ export const FloatingStateInspector: React.FC = () => {
                     <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-2">
                       <div className="flex items-center gap-2 font-semibold text-slate-200">
                         <Shield className="w-4 h-4 text-cyan-400" />
-                        <span>Audit & Governance Policy</span>
+                        <span>Activity & Governance Policy</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Immutable Audit Trail</span>
+                        <span className="text-slate-400">Immutable Activity Trail</span>
                         <input
                           type="checkbox"
                           checked={activeState.audit?.immutable ?? true}

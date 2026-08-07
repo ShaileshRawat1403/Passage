@@ -149,7 +149,7 @@ describe("P1.4 — Human-Readable Transition Editor", () => {
       event: "OLD_EVENT",
       priority: 42,
       type: "internal",
-      actions: [{ id: "act-1", name: "Audit Log", type: "audit" }],
+      actions: [{ id: "act-1", name: "Activity Log", type: "audit" }],
       guard: {
         id: "g-p",
         name: "Test Guard",
@@ -518,7 +518,7 @@ describe("P1.4 — Human-Readable Transition Editor", () => {
     expect(desc.eventLabel).toBe("SELF_LOOP_EVENT");
   });
 
-  it("20. Runtime runs and audit records remain unchanged", () => {
+  it("20. Runtime runs and activity records remain unchanged", () => {
     const store = useWorkflowStore.getState();
     const run = store.startNewRun(testWfId);
     expect(run).toBeDefined();

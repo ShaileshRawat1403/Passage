@@ -511,10 +511,10 @@ export const StateInspector: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-2">
               <div className="flex items-center gap-2 font-semibold text-slate-200">
                 <Shield className="w-4 h-4 text-cyan-400" />
-                <span>Audit & Governance Policy</span>
+                <span>Activity & Governance Policy</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">Immutable Audit Logging</span>
+                <span className="text-slate-400">Immutable Activity Logging</span>
                 <input
                   type="checkbox"
                   checked={activeState.audit?.immutable ?? true}

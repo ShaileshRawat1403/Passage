@@ -47,7 +47,7 @@ export const vendorInvoiceWorkflow: WorkflowDefinition = {
       entryActions: [
         {
           id: "act-log-entry",
-          name: "Record Workflow Entry Audit",
+          name: "Record Workflow Entry Activity",
           type: "audit",
           description: "Persists initial payload hash and case ID to append-only log.",
         },
@@ -212,7 +212,7 @@ export const vendorInvoiceWorkflow: WorkflowDefinition = {
           id: "act-agent-risk",
           name: "Run Risk Analysis Agent",
           type: "agent",
-          description: "Generates risk score and audit reasoning using Gemini.",
+          description: "Generates risk score and activity reasoning using Gemini.",
           agentConfig: {
             agentName: "Risk Analyst Bot",
             modelProvider: "Google DeepMind",
@@ -414,7 +414,7 @@ export const customerOnboardingWorkflow: WorkflowDefinition = {
       entryActions: [
         {
           id: "act-kyc-log",
-          name: "Initialize KYC Audit Trail",
+          name: "Initialize KYC Activity Trail",
           type: "audit",
         },
       ],

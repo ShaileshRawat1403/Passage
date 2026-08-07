@@ -89,7 +89,7 @@ interface WorkflowStateStore {
   // Saved Connections
   connections: ConnectionCredential[];
 
-  // Workspace Activity & Audit Log
+  // Workspace Activity Log
   activityLogs: WorkspaceActivity[];
   addActivityLog: (
     entry: Omit<WorkspaceActivity, "id" | "timestamp"> & { id?: string; timestamp?: string }
@@ -175,6 +175,9 @@ interface WorkflowStateStore {
 
   // Connections
   addConnection: (conn: ConnectionCredential) => void;
+
+  // Hydration from Durable Persistence (P2.0E)
+  hydrateFromDurableStore: () => Promise<void>;
 }
 
 export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
@@ -410,7 +413,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       name: "Google DeepMind Gemini API",
       type: "agent_provider",
       service: "Gemini 3.6 Flash",
-      status: "connected",
+      status: "configured",
       lastTestedAt: new Date().toISOString(),
     },
     {
@@ -418,7 +421,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       name: "ERP Vendor Registry API",
       type: "api_key",
       service: "REST Endpoint",
-      status: "connected",
+      status: "configured",
       lastTestedAt: new Date().toISOString(),
     },
     {
@@ -426,7 +429,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       name: "Finance Slack Webhook",
       type: "webhook",
       service: "Slack Channels",
-      status: "connected",
+      status: "configured",
       lastTestedAt: new Date().toISOString(),
     },
   ],
@@ -1221,6 +1224,38 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
       activityLogs: [connLog, ...(state.activityLogs || [])],
     }));
   },
+
+  hydrateFromDurableStore: async () => {
+    if (typeof window === "undefined" || !window.location?.origin) return;
+    try {
+      const [wfRes, runRes, actRes, connRes] = await Promise.all([
+        fetch("/api/workflows").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/runs").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/activity").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/connections").then((r) => (r.ok ? r.json() : null)),
+      ]);
+
+      const updates: Partial<WorkflowStateStore> = {};
+      if (wfRes?.workflows?.length) {
+        updates.workflows = wfRes.workflows;
+      }
+      if (runRes?.runs?.length) {
+        updates.activeRuns = runRes.runs;
+      }
+      if (actRes?.activities?.length) {
+        updates.activityLogs = actRes.activities;
+      }
+      if (connRes?.connections?.length) {
+        updates.connections = connRes.connections;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        set(updates);
+      }
+    } catch (err) {
+      console.warn("Hydration warning (offline or cold start):", err);
+    }
+  },
 }));
 
 export function createInitialTestStore() {
@@ -1238,7 +1273,7 @@ export function createInitialTestStore() {
 
     copiedSelection: null,
 
-  historyByWorkflowId: {},
+    historyByWorkflowId: {},
 
     isAdvancedMode: false,
     validationIssues: validateWorkflow(initialWf),
@@ -1253,7 +1288,7 @@ export function createInitialTestStore() {
         name: "Google DeepMind Gemini API",
         type: "agent_provider" as const,
         service: "Gemini 3.6 Flash",
-        status: "available_local" as const,
+        status: "configured" as const,
         lastTestedAt: new Date().toISOString(),
       },
       {
@@ -1261,7 +1296,7 @@ export function createInitialTestStore() {
         name: "ERP Vendor Registry API",
         type: "api_key" as const,
         service: "REST Endpoint",
-        status: "available_local" as const,
+        status: "configured" as const,
         lastTestedAt: new Date().toISOString(),
       },
       {
@@ -1269,7 +1304,7 @@ export function createInitialTestStore() {
         name: "Finance Slack Webhook",
         type: "webhook" as const,
         service: "Slack Channels",
-        status: "available_local" as const,
+        status: "configured" as const,
         lastTestedAt: new Date().toISOString(),
       },
     ],

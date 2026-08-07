@@ -69,7 +69,7 @@ export const RunTimeline: React.FC = () => {
             <div className="text-base font-bold text-emerald-400">{run.completedActionCount}</div>
           </div>
           <div>
-            <div className="text-slate-400 text-[10px] uppercase">Audit Events</div>
+            <div className="text-slate-400 text-[10px] uppercase">Activity Events</div>
             <div className="text-base font-bold text-blue-400">{run.auditTrail.length}</div>
           </div>
         </div>
@@ -120,7 +120,7 @@ export const RunTimeline: React.FC = () => {
         </div>
       )}
 
-      {/* Timeline Audit Logs */}
+      {/* Timeline Activity Logs */}
       <div className="space-y-3">
         <h3 className="font-bold text-sm text-slate-100 flex items-center gap-2 font-mono uppercase tracking-wider">
           <Activity className="w-4 h-4 text-cyan-400" />

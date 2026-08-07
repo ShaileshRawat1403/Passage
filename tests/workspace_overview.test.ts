@@ -405,7 +405,7 @@ describe("Workspace Overview Domain Derivation (P1.5)", () => {
     expect(item.readiness).toBe("structurally_valid");
   });
 
-  it("18. Derivation does not alter active runs or audit trails", () => {
+  it("18. Derivation does not alter active runs or activity trails", () => {
     const run: WorkflowRun = {
       id: "RUN-TEST",
       caseId: "CASE-TEST",

@@ -35,6 +35,187 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // P2.0 Persistence REST API Endpoints
+  app.get("/api/workflows", async (_req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const workflows = await adapter.getAllWorkflows();
+      res.json({ workflows });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/workflows/:id", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const workflow = await adapter.getWorkflowHead(req.params.id);
+      if (!workflow) {
+        res.status(404).json({ error: "Workflow not found" });
+        return;
+      }
+      res.json({ workflow });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/workflows", async (req, res) => {
+    try {
+      const { commandService } = await import("./src/services/commandService");
+      const idempotencyKey = req.headers["x-idempotency-key"] as string | undefined;
+      const result = await commandService.saveWorkflow(req.body, idempotencyKey);
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/workflows/:id/publish", async (req, res) => {
+    try {
+      const { commandService } = await import("./src/services/commandService");
+      const { version } = req.body;
+      const idempotencyKey = req.headers["x-idempotency-key"] as string | undefined;
+      const result = await commandService.publishWorkflowVersion(
+        req.params.id,
+        version || "1.0.0",
+        idempotencyKey
+      );
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete("/api/workflows/:id", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      await adapter.deleteWorkflow(req.params.id);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/runs", async (_req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const runs = await adapter.getAllWorkflowRuns();
+      res.json({ runs });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/runs/:id", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const run = await adapter.getWorkflowRun(req.params.id);
+      if (!run) {
+        res.status(404).json({ error: "Workflow run not found" });
+        return;
+      }
+      res.json({ run });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/runs", async (req, res) => {
+    try {
+      const { commandService } = await import("./src/services/commandService");
+      const { workflowId, caseId, initialContext } = req.body;
+      const idempotencyKey = req.headers["x-idempotency-key"] as string | undefined;
+      const result = await commandService.createRun(
+        workflowId,
+        caseId,
+        initialContext,
+        idempotencyKey
+      );
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/runs/:id/dispatch", async (req, res) => {
+    try {
+      const { commandService } = await import("./src/services/commandService");
+      const { eventName, payload } = req.body;
+      const idempotencyKey = req.headers["x-idempotency-key"] as string | undefined;
+      const result = await commandService.dispatchRunEvent(
+        req.params.id,
+        eventName,
+        payload,
+        idempotencyKey
+      );
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/activity", async (_req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const activities = await adapter.getWorkspaceActivities();
+      res.json({ activities });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get("/api/connections", async (_req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      res.json({ connections });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post("/api/connections", async (req, res) => {
+    try {
+      const { commandService } = await import("./src/services/commandService");
+      const idempotencyKey = req.headers["x-idempotency-key"] as string | undefined;
+      const result = await commandService.saveConnection(req.body, idempotencyKey);
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete("/api/connections/:id", async (req, res) => {
+    try {
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      await adapter.deleteConnection(req.params.id);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // API Route: AI Natural Language Workflow Generator
   app.post("/api/workflow/generate", async (req, res) => {
     try {

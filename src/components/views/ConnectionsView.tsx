@@ -79,7 +79,7 @@ export const ConnectionsView: React.FC = () => {
       name,
       type: selectedPreset === "custom_api" ? "api_key" : "agent_provider",
       service: service || "External API Endpoint",
-      status: "available_local",
+      status: "configured",
       lastTestedAt: new Date().toISOString(),
       defaultModel: model,
       providerId: selectedPreset,

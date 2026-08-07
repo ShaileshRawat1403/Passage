@@ -111,7 +111,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
                 { type: "agent", label: "AI Agent", icon: Bot, color: "text-[#ff5db1]" },
                 { type: "http", label: "External API", icon: Globe, color: "text-[#71a7ff]" },
                 { type: "human_task", label: "Human Task", icon: UserCheck, color: "text-[#45e0d1]" },
-                { type: "audit", label: "Audit Log", icon: Shield, color: "text-[#ffc766]" },
+                { type: "audit", label: "Activity Log", icon: Shield, color: "text-[#ffc766]" },
                 { type: "transform", label: "Transform", icon: Layers, color: "text-[#5ee28a]" },
                 { type: "wait", label: "Timer Delay", icon: Clock, color: "text-[#8c98ae]" },
               ].map((item) => {

@@ -7,7 +7,7 @@ import { MainLayout } from "../src/components/layout/MainLayout";
 import { useWorkflowStore, resetWorkflowStore } from "../src/store/workflowStore";
 import { filterActivityLogs, formatActivityTimestamp, seedInitialActivityLogs } from "../src/domain/activity";
 
-describe("Workspace Activity & Audit Trail", () => {
+describe("Workspace Activity", () => {
   beforeEach(() => {
     act(() => {
       resetWorkflowStore();
@@ -48,7 +48,7 @@ describe("Workspace Activity & Audit Trail", () => {
     });
   });
 
-  describe("Store Action Automatic Audit Trail", () => {
+  describe("Store Action Automatic Activity Logging", () => {
     it("logs a new activity entry when a workflow is created", () => {
       act(() => {
         useWorkflowStore.getState().createWorkflow("Payment Authorization Pipeline", "Handles 2FA payments");
@@ -65,7 +65,7 @@ describe("Workspace Activity & Audit Trail", () => {
     it("logs a new activity entry when a workflow definition is imported", () => {
       const validJson = JSON.stringify({
         id: "wf-imported-test",
-        name: "Imported Fraud Audit Workflow",
+        name: "Imported Fraud Activity Workflow",
         version: "1.2.0",
         initialStateId: "init",
         states: [
@@ -87,7 +87,7 @@ describe("Workspace Activity & Audit Trail", () => {
           },
           {
             id: "final-1",
-            name: "Audit Complete",
+            name: "Activity Complete",
             type: "final",
             position: { x: 300, y: 100 },
             transitions: [],
@@ -103,7 +103,7 @@ describe("Workspace Activity & Audit Trail", () => {
       const latest = logs[0];
       expect(latest?.category).toBe("workflow_import");
       expect(latest?.action).toBe("Workflow Definition Imported");
-      expect(latest?.workflowName).toBe("Imported Fraud Audit Workflow");
+      expect(latest?.workflowName).toBe("Imported Fraud Activity Workflow");
     });
 
     it("logs designer edits when states are added or modified", () => {

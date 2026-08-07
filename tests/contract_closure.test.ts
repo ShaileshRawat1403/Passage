@@ -258,7 +258,7 @@ describe("P0.1B Transaction and Evidence Closure - Terminal Statuses", () => {
   });
 });
 
-describe("P0.1B Transaction and Evidence Closure - Failure Audit Semantics & Transactional Ordering", () => {
+describe("P0.1B Transaction and Evidence Closure - Failure Activity Semantics & Transactional Ordering", () => {
   const failingExitWf: WorkflowDefinition = {
     id: "wf-fail-exit",
     name: "Failing Exit Action Workflow",

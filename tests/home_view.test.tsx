@@ -104,7 +104,7 @@ describe("HomeView & Header Component Integration (P1.5)", () => {
 
     // Verify 'Home' is the first tab in navigation order
     const navButtons = screen.getAllByRole("button").filter((btn) =>
-      ["Home", "Designer", "Runs", "Cases", "Audit Trail"].some((label) =>
+      ["Home", "Designer", "Runs", "Cases", "Activity"].some((label) =>
         btn.textContent?.includes(label)
       )
     );

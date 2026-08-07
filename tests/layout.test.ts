@@ -220,7 +220,7 @@ describe("Workflow Layout Engine (P1.3)", () => {
       name: "Custom State Name",
       type: "atomic",
       position: { x: 0, y: 0 },
-      entryActions: [{ id: "a1", name: "Audit Action", type: "audit" }],
+      entryActions: [{ id: "a1", name: "Activity Action", type: "audit" }],
       activeActions: [],
       exitActions: [],
       transitions: [],

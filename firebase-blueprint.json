@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "workflows": {
+      "title": "Workflow Definitions & Heads",
+      "description": "Workflow definitions and current editable head",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "version": { "type": "string" },
+        "status": { "type": "string" },
+        "initialStateId": { "type": "string" },
+        "states": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "version", "status", "initialStateId", "states"]
+    },
+    "workflow_versions": {
+      "title": "Immutable Workflow Versions",
+      "description": "Immutable versioned workflow definitions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "version": { "type": "string" },
+        "definition": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "workflowId", "version", "definition", "createdAt"]
+    },
+    "workflow_runs": {
+      "title": "Workflow Runs",
+      "description": "Durable state and context of active or terminal workflow runs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "caseId": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "workflowVersion": { "type": "string" },
+        "status": { "type": "string" },
+        "currentStateId": { "type": "string" },
+        "context": { "type": "object" },
+        "history": { "type": "array" },
+        "visitedStateIds": { "type": "array" },
+        "completedActionCount": { "type": "number" },
+        "failedActionCount": { "type": "number" },
+        "retryCount": { "type": "number" },
+        "startedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "lastEventAt": { "type": "string" }
+      },
+      "required": ["id", "caseId", "workflowId", "workflowVersion", "status", "currentStateId"]
+    },
+    "run_events": {
+      "title": "Append-Only Run Events",
+      "description": "Append-only execution events recorded during workflow runs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workflowRunId": { "type": "string" },
+        "workflowVersion": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "eventType": { "type": "string" },
+        "stateId": { "type": "string" },
+        "actionId": { "type": "string" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "workflowRunId", "workflowVersion", "timestamp", "eventType"]
+    },
+    "workspace_activity": {
+      "title": "Workspace Activity Feed",
+      "description": "Append-only activity feed items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "category": { "type": "string" },
+        "action": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "workflowName": { "type": "string" },
+        "details": { "type": "string" },
+        "actor": { "type": "string" },
+        "severity": { "type": "string" },
+        "isDemo": { "type": "boolean" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "timestamp", "category", "action", "details"]
+    },
+    "connections": {
+      "title": "Connection Metadata",
+      "description": "Provider and API integration connection templates/configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "service": { "type": "string" },
+        "status": { "type": "string" },
+        "lastTestedAt": { "type": "string" },
+        "defaultModel": { "type": "string" },
+        "providerId": { "type": "string" }
+      },
+      "required": ["id", "name", "type", "service", "status"]
+    },
+    "idempotency_records": {
+      "title": "Idempotency Records",
+      "description": "Records ensuring exact-once processing of state mutations and commands",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "key": { "type": "string" },
+        "workflowRunId": { "type": "string" },
+        "actionId": { "type": "string" },
+        "requestHash": { "type": "string" },
+        "response": { "type": "object" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "key", "status", "createdAt"]
+    }
+  },
+  "securityRules": {
+    "workflows": {
+      "read": "true",
+      "write": "true"
+    },
+    "workflow_versions": {
+      "read": "true",
+      "write": "true"
+    },
+    "workflow_runs": {
+      "read": "true",
+      "write": "true"
+    },
+    "run_events": {
+      "read": "true",
+      "create": "true",
+      "update": "false",
+      "delete": "false"
+    },
+    "workspace_activity": {
+      "read": "true",
+      "create": "true",
+      "update": "false",
+      "delete": "false"
+    },
+    "connections": {
+      "read": "true",
+      "write": "true"
+    },
+    "idempotency_records": {
+      "read": "true",
+      "write": "true"
+    }
+  }
+}
