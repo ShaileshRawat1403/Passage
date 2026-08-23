@@ -36,6 +36,7 @@ export interface SaveRunBatchOptions {
 }
 
 export interface PublishVersionAtomicOptions {
+  contentHash: string;
   workflowId: string;
   version: string;
   definition: WorkflowDefinition;
@@ -155,9 +156,11 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     }
     const versionEntity: WorkflowVersionEntity = {
       id: versionKey,
-      workflowId,
-      version,
-      definition,
+      workflowId: options.workflowId,
+      workspaceId: options.definition.workspaceId || "default-workspace",
+      contentHash: options.contentHash,
+      version: options.version,
+      definition: options.definition,
       createdAt: new Date().toISOString(),
     };
     const validated = WorkflowVersionEntitySchema.parse(versionEntity);
@@ -199,6 +202,8 @@ export class MemoryPersistenceAdapter implements IPersistenceAdapter {
     const versionEntity: WorkflowVersionEntity = {
       id: versionKey,
       workflowId: options.workflowId,
+      workspaceId: options.definition.workspaceId || "default-workspace",
+      contentHash: options.contentHash,
       version: options.version,
       definition: options.definition,
       createdAt: new Date().toISOString(),
@@ -555,12 +560,14 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
         );
       }
       const versionEntity: WorkflowVersionEntity = {
-        id: versionKey,
-        workflowId,
-        version,
-        definition,
-        createdAt: new Date().toISOString(),
-      };
+      id: versionKey,
+      workflowId: options.workflowId,
+      workspaceId: options.definition.workspaceId || "default-workspace",
+      contentHash: options.contentHash,
+      version: options.version,
+      definition: options.definition,
+      createdAt: new Date().toISOString(),
+    };
       const validated = WorkflowVersionEntitySchema.parse(versionEntity);
       transaction.set(docRef, validated);
       return validated;
@@ -614,12 +621,14 @@ export class FirestorePersistenceAdapter implements IPersistenceAdapter {
       }
 
       const versionEntity: WorkflowVersionEntity = {
-        id: versionKey,
-        workflowId: options.workflowId,
-        version: options.version,
-        definition: options.definition,
-        createdAt: new Date().toISOString(),
-      };
+      id: versionKey,
+      workflowId: options.workflowId,
+      workspaceId: options.definition.workspaceId || "default-workspace",
+      contentHash: options.contentHash,
+      version: options.version,
+      definition: options.definition,
+      createdAt: new Date().toISOString(),
+    };
 
       const headData = WorkflowEntitySchema.parse(headSnap.data());
       const updatedHeadDefinition: WorkflowDefinition = {

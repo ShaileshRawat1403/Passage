@@ -196,6 +196,7 @@ export const WorkflowStateSchema: z.ZodType<WorkflowState> = z.lazy(() =>
 );
 
 export const WorkflowDefinitionSchema = z.strictObject({
+  workspaceId: z.string().default("default-workspace"),
   id: z.string().min(1, "Workflow ID is required"),
   name: z.string().min(1, "Workflow name is required"),
   description: z.string().optional(),
@@ -223,6 +224,7 @@ export const WorkflowEventSchema = z.strictObject({
 });
 
 export const AuditEventSchema = z.strictObject({
+  workspaceId: z.string().default("default-workspace"),
   id: z.string(),
   workflowRunId: z.string(),
   workflowVersion: z.string(),
@@ -258,6 +260,8 @@ export const AuditEventSchema = z.strictObject({
 });
 
 export const WorkflowRunSchema = z.strictObject({
+  workspaceId: z.string().default("default-workspace"),
+  workflowVersionHash: z.string().optional(),
   id: z.string(),
   caseId: z.string(),
   workflowId: z.string(),
@@ -293,4 +297,26 @@ export const WorkflowRunSchema = z.strictObject({
   completedAt: z.string().optional(),
   lastEventAt: z.string(),
   auditTrail: z.array(AuditEventSchema),
+});
+
+
+export const PassageLayoutSchema = z.record(
+  z.string(), // stateId
+  z.strictObject({
+    position: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+    }),
+  })
+);
+
+export const PassageWorkflowDocumentV1Schema = z.strictObject({
+  contract: z.literal("passage.workflow-document.v1"),
+  workflow: WorkflowDefinitionSchema,
+  layout: PassageLayoutSchema,
+  semanticCapabilities: z.array(z.string()),
+  provenance: z.strictObject({
+    source: z.enum(["blank", "import", "assistant", "template"]),
+    exportedAt: z.string(),
+  }),
 });

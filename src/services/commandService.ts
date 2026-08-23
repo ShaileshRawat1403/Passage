@@ -130,7 +130,14 @@ export class CommandService {
     try {
       const head = await this.adapter.getWorkflowHead(workflowId);
       if (!head) {
-        const errMsg = `Workflow ${workflowId} not found`;
+        const errMsg = `Workflow ${workflowId} version ${workflowVersion} not found`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
+      
+      const computedHash = computeHash(wf);
+      if (computedHash !== workflowVersionHash) {
+        const errMsg = `Mismatched content hash for workflow ${workflowId} version ${workflowVersion}`;
         if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
         return { success: false, error: errMsg };
       }
@@ -155,6 +162,7 @@ export class CommandService {
       };
 
       const savedHead = await this.adapter.publishWorkflowVersionAtomic({
+        contentHash: computeHash(updatedHead),
         workflowId,
         version,
         definition: updatedHead,
@@ -173,11 +181,13 @@ export class CommandService {
 
   async createRun(
     workflowId: string,
+    workflowVersion: string,
+    workflowVersionHash: string,
     caseId?: string,
     initialContext?: Record<string, unknown>,
     idempotencyKey?: string
   ): Promise<CommandResponse<WorkflowRun>> {
-    const requestHash = computeHash({ workflowId, caseId, initialContext });
+    const requestHash = computeHash({ workflowId, workflowVersion, workflowVersionHash, caseId, initialContext });
 
     if (idempotencyKey) {
       try {
@@ -205,15 +215,23 @@ export class CommandService {
     }
 
     try {
-      const wf = await this.adapter.getWorkflowHead(workflowId);
+      const wf = await this.adapter.getWorkflowVersion(workflowId, workflowVersion);
       if (!wf) {
-        const errMsg = `Workflow ${workflowId} not found`;
+        const errMsg = `Workflow ${workflowId} version ${workflowVersion} not found`;
         if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
         return { success: false, error: errMsg };
       }
 
       const actualCaseId = caseId || `CASE-${Date.now().toString(36).toUpperCase()}`;
+      const computedHash = computeHash(wf);
+      if (computedHash !== workflowVersionHash) {
+        const errMsg = `Mismatched content hash for workflow ${workflowId} version ${workflowVersion}`;
+        if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
+        return { success: false, error: errMsg };
+      }
       const newRun = createWorkflowRun(wf, initialContext, actualCaseId);
+      newRun.workflowVersionHash = workflowVersionHash;
+      newRun.workspaceId = wf.workspaceId || "default-workspace";
 
       const sequencedEvents = newRun.auditTrail.map((ev, i) => ({
         ...ev,
@@ -297,9 +315,9 @@ export class CommandService {
         return { success: false, error: errMsg };
       }
 
-      const wf = await this.adapter.getWorkflowHead(run.workflowId);
+      const wf = await this.adapter.getWorkflowVersion(run.workflowId, run.workflowVersion);
       if (!wf) {
-        const errMsg = `Workflow definition for ${run.workflowId} not found`;
+        const errMsg = `Workflow definition for ${run.workflowId} version ${run.workflowVersion} not found`;
         if (idempotencyKey) await this.adapter.failIdempotency(idempotencyKey, errMsg);
         return { success: false, error: errMsg };
       }

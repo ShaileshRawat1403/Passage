@@ -1180,7 +1180,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
 
     if (isBrowserApiAvailable()) {
       const idempKey = `run-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const res = await fetch("/api/runs", {
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/runs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1327,7 +1327,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
   addConnection: async (conn) => {
     if (isBrowserApiAvailable()) {
       const idempKey = `conn-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const res = await fetch("/api/connections", {
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/connections", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1378,7 +1378,7 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     if (!wf || !isBrowserApiAvailable()) return;
 
     const idempKey = `save-wf-${activeId}-${Date.now()}`;
-    const res = await fetch("/api/workflows", {
+    const res = await fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/workflows", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1397,10 +1397,10 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     if (!isBrowserApiAvailable()) return;
     try {
       const [wfRes, runRes, actRes, connRes] = await Promise.all([
-        fetch("/api/workflows").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/runs").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/activity").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/connections").then((r) => (r.ok ? r.json() : null)),
+        fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/workflows").then((r) => (r.ok ? r.json() : null)),
+        fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/runs").then((r) => (r.ok ? r.json() : null)),
+        fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/activity").then((r) => (r.ok ? r.json() : null)),
+        fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/connections").then((r) => (r.ok ? r.json() : null)),
       ]);
 
       const updates: Partial<WorkflowStateStore> = {};

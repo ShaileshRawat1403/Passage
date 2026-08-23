@@ -117,14 +117,55 @@ export const FloatingCanvasToolbar: React.FC = () => {
 
   const handleCopyJson = () => {
     if (!activeWorkflow) return;
-    navigator.clipboard.writeText(JSON.stringify(activeWorkflow, null, 2));
+    const layout: any = {};
+    activeWorkflow.states.forEach(s => {
+      layout[s.id] = { position: s.position || { x: 0, y: 0 } };
+    });
+    
+    const cleanWorkflow = JSON.parse(JSON.stringify(activeWorkflow));
+    cleanWorkflow.states.forEach((s: any) => {
+      delete s.position;
+    });
+
+    const doc = {
+      contract: "passage.workflow-document.v1",
+      workflow: cleanWorkflow,
+      layout,
+      semanticCapabilities: ["implemented"],
+      provenance: {
+        source: "export",
+        exportedAt: new Date().toISOString()
+      }
+    };
+    navigator.clipboard.writeText(JSON.stringify(doc, null, 2));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownloadJson = () => {
     if (!activeWorkflow) return;
-    const blob = new Blob([JSON.stringify(activeWorkflow, null, 2)], {
+    const layout: any = {};
+    activeWorkflow.states.forEach(s => {
+      layout[s.id] = { position: s.position || { x: 0, y: 0 } };
+    });
+    
+    // strip position from export
+    const cleanWorkflow = JSON.parse(JSON.stringify(activeWorkflow));
+    cleanWorkflow.states.forEach((s: any) => {
+      delete s.position;
+    });
+
+    const doc = {
+      contract: "passage.workflow-document.v1",
+      workflow: cleanWorkflow,
+      layout,
+      semanticCapabilities: ["implemented"],
+      provenance: {
+        source: "export",
+        exportedAt: new Date().toISOString()
+      }
+    };
+    const blob = new Blob([JSON.stringify(doc, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);

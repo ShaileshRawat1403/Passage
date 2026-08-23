@@ -184,6 +184,7 @@ export type WorkflowReadiness = "incomplete" | "structurally_valid" | "executabl
 
 export interface WorkflowDefinition {
   id: string;
+  workspaceId: string;
   name: string;
   description?: string;
   version: string;
@@ -211,6 +212,7 @@ export interface WorkflowEvent {
 
 export interface AuditEvent {
   id: string;
+  workspaceId: string;
   workflowRunId: string;
   workflowVersion: string;
   sequence?: number;
@@ -244,9 +246,11 @@ export interface AuditEvent {
 
 export interface WorkflowRun {
   id: string;
+  workspaceId: string;
   caseId: string;
   workflowId: string;
   workflowVersion: string;
+  workflowVersionHash?: string;
   status: "active" | "waiting" | "completed" | "failed" | "cancelled";
   currentStateId: string;
   revision?: number;
@@ -288,6 +292,7 @@ export interface ValidationIssue {
 
 export interface ConnectionCredential {
   id: string;
+  workspaceId: string;
   name: string;
   type: "api_key" | "oauth2" | "basic_auth" | "agent_provider" | "webhook";
   service: string;
@@ -316,6 +321,7 @@ export type WorkspaceActivityCategory =
 
 export interface WorkspaceActivity {
   id: string;
+  workspaceId: string;
   timestamp: string;
   category: WorkspaceActivityCategory;
   action: string;
@@ -328,3 +334,21 @@ export interface WorkspaceActivity {
   metadata?: Record<string, unknown>;
 }
 
+
+
+export interface PassageLayout {
+  [stateId: string]: {
+    position: { x: number; y: number };
+  };
+}
+
+export interface PassageWorkflowDocumentV1 {
+  contract: "passage.workflow-document.v1";
+  workflow: WorkflowDefinition;
+  layout: PassageLayout;
+  semanticCapabilities: string[];
+  provenance: {
+    source: "blank" | "import" | "assistant" | "template";
+    exportedAt: string;
+  };
+}

@@ -27,6 +27,7 @@ import { FinalNode } from "./nodes/FinalNode";
 import { CustomEdge } from "./CustomEdge";
 import { FloatingCanvasToolbar } from "./FloatingCanvasToolbar";
 import { FloatingStateInspector } from "../inspector/FloatingStateInspector";
+import { WorkflowDashboard } from "./WorkflowDashboard";
 
 const nodeTypes = {
   start: StartNode,
@@ -268,6 +269,7 @@ const WorkflowCanvasInner: React.FC = () => {
       style={{ backgroundColor: "var(--canvas-bg, #020617)" }}
     >
       <FloatingCanvasToolbar />
+      <WorkflowDashboard />
       <FloatingStateInspector />
 
       <ReactFlow

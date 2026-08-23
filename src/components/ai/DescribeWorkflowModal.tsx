@@ -29,7 +29,7 @@ export const DescribeWorkflowModal: React.FC<DescribeWorkflowModalProps> = ({ is
     setGeneratedResult(null);
 
     try {
-      const res = await fetch("/api/workflow/generate", {
+      const res = await fetch((import.meta.env.VITE_API_BASE_URL || "") + "/api/workflow/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description: prompt }),
