@@ -54,7 +54,7 @@ const WorkflowCanvasInner: React.FC = () => {
     setSelectedStateId,
     setSelectedTransitionId,
     setSelectedSelection,
-    updateStatePosition,
+    updateStatePositions,
     addTransition,
     deleteSelection,
     copySelection,
@@ -129,16 +129,17 @@ const WorkflowCanvasInner: React.FC = () => {
   }, []);
 
   const onNodeDragStop = useCallback(
-    (_event: unknown, node: Node) => {
+    (_event: unknown, node: Node, nodes: Node[]) => {
       if (!activeWorkflow) return;
-      updateStatePosition(activeWorkflow.id, node.id, node.position);
+      const updates = nodes.map((n) => ({ stateId: n.id, pos: n.position }));
+      updateStatePositions(activeWorkflow.id, updates);
       isDraggingRef.current = false;
       justDraggedRef.current = true;
       setTimeout(() => {
         justDraggedRef.current = false;
       }, 150);
     },
-    [activeWorkflow, updateStatePosition]
+    [activeWorkflow, updateStatePositions]
   );
 
   // Handle multi-selection change from React Flow box-select / shift-select

@@ -3,21 +3,31 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { Hourglass, Clock, Settings } from "lucide-react";
 import { WorkflowState } from "../../../types/workflow";
 import { useWorkflowStore } from "../../../store/workflowStore";
+import { ValidationBadge } from "./ValidationBadge";
 
 export const WaitingNode: React.FC<NodeProps> = (props) => {
   const data = props.data as unknown as WorkflowState;
   const selected = props.selected;
   const setSelectedStateId = useWorkflowStore((state) => state.setSelectedStateId);
   const timeoutHours = data?.timeout?.durationMs ? Math.round(data.timeout.durationMs / 3600000) : null;
+  const validationIssues = useWorkflowStore((state) => state.validationIssues);
+  const issues = validationIssues.filter(i => i.stateId === props.id);
+  const hasError = issues.some(i => i.severity === "error");
+  const hasWarning = issues.some(i => i.severity === "warning");
 
   return (
     <div
       className={`relative w-[260px] rounded-xl bg-slate-950/80 backdrop-blur-xl border-2 transition-all shadow-2xl p-4 ${
         selected
           ? "border-cyan-400 ring-4 ring-cyan-500/20 shadow-[0_0_20px_rgba(var(--primary-rgb),0.25)]"
+          : hasError
+          ? "border-rose-500/80 ring-2 ring-rose-500/30"
+          : hasWarning
+          ? "border-amber-500/80 ring-2 ring-amber-500/30"
           : "border-white/10 hover:border-cyan-500/50"
       }`}
     >
+      <ValidationBadge stateId={props.id} />
       <Handle
         type="target"
         position={Position.Left}

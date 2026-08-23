@@ -3,11 +3,16 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { Layers, ShieldCheck, ArrowRight, Zap, Settings } from "lucide-react";
 import { WorkflowState } from "../../../types/workflow";
 import { useWorkflowStore } from "../../../store/workflowStore";
+import { ValidationBadge } from "./ValidationBadge";
 
 export const AtomicNode: React.FC<NodeProps> = (props) => {
   const data = props.data as unknown as WorkflowState;
   const selected = props.selected;
   const setSelectedStateId = useWorkflowStore((state) => state.setSelectedStateId);
+  const validationIssues = useWorkflowStore((state) => state.validationIssues);
+  const issues = validationIssues.filter(i => i.stateId === props.id);
+  const hasError = issues.some(i => i.severity === "error");
+  const hasWarning = issues.some(i => i.severity === "warning");
 
   const actionCount = (data?.entryActions?.length || 0) + (data?.activeActions?.length || 0) + (data?.exitActions?.length || 0);
   const transitionCount = data?.transitions?.length || 0;
@@ -18,9 +23,14 @@ export const AtomicNode: React.FC<NodeProps> = (props) => {
       className={`relative w-[260px] rounded-xl bg-slate-950/80 backdrop-blur-xl border transition-all shadow-2xl p-4 ${
         selected
           ? "border-blue-400 ring-4 ring-blue-500/20 shadow-[0_0_20px_rgba(96,165,250,0.25)]"
+          : hasError
+          ? "border-rose-500/80 ring-2 ring-rose-500/30"
+          : hasWarning
+          ? "border-amber-500/80 ring-2 ring-amber-500/30"
           : "border-white/10 hover:border-white/20"
       }`}
     >
+      <ValidationBadge stateId={props.id} />
       <Handle
         type="target"
         position={Position.Left}

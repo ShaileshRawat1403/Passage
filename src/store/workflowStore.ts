@@ -135,6 +135,7 @@ interface WorkflowStateStore {
   duplicateState: (workflowId: string, stateId: string) => void;
   deleteState: (workflowId: string, stateId: string) => void;
   updateStatePosition: (workflowId: string, stateId: string, pos: { x: number; y: number }) => void;
+  updateStatePositions: (workflowId: string, updates: { stateId: string; pos: { x: number; y: number } }[]) => void;
 
   addTransition: (workflowId: string, transition: TransitionDefinition) => void;
   updateTransition: (
@@ -875,6 +876,17 @@ export const useWorkflowStore = create<WorkflowStateStore>((set, get) => ({
     get().commitDraftOperation(workflowId, "STATE_MOVED", `state:${stateId}:move`, (draft) => {
       const st = draft.states.find((s) => s.id === stateId);
       if (st) st.position = pos;
+    });
+  },
+
+  updateStatePositions: (workflowId, updates) => {
+    // Determine a group key to coalesce moves if they happen in quick succession
+    const groupKey = updates.map(u => u.stateId).sort().join("-") + ":move";
+    get().commitDraftOperation(workflowId, "STATE_MOVED", groupKey, (draft) => {
+      updates.forEach((update) => {
+        const st = draft.states.find((s) => s.id === update.stateId);
+        if (st) st.position = update.pos;
+      });
     });
   },
 

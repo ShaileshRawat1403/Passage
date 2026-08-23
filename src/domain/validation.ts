@@ -361,6 +361,74 @@ export function validateWorkflow(workflow: WorkflowDefinition): ValidationIssue[
     }
   }
 
+  // 5. Circular dependencies detection
+  if (startStates.length === 1 && firstStart) {
+    const visitedNodes = new Set<string>();
+    const recStack = new Set<string>();
+
+    const detectCycle = (id: string) => {
+      if (!visitedNodes.has(id)) {
+        visitedNodes.add(id);
+        recStack.add(id);
+
+        const st = stateMap.get(id);
+        if (st) {
+          for (const tr of st.transitions || []) {
+            if (tr.targetStateId) {
+              if (!visitedNodes.has(tr.targetStateId) && detectCycle(tr.targetStateId)) {
+                return true;
+              } else if (recStack.has(tr.targetStateId)) {
+                issues.push({
+                  id: `warn-circular-${id}-${tr.targetStateId}`,
+                  severity: "warning",
+                  stateId: id,
+                  message: `Circular dependency detected: Transition from "${st.name}" to "${stateMap.get(tr.targetStateId)?.name}" forms a cycle.`,
+                });
+                return true; // We report the issue, but continue to find others if we wanted, but boolean return is fine. Actually, let's not return true immediately to find all cycles, but we need to mark them somehow.
+              }
+            }
+          }
+        }
+      }
+      recStack.delete(id);
+      return false;
+    };
+
+    // To find all cycles we can just run dfs
+    const detectAllCycles = (id: string, currentPath: string[]) => {
+      if (recStack.has(id)) {
+        // Cycle detected
+        issues.push({
+          id: `warn-circular-${id}`,
+          severity: "warning",
+          stateId: id,
+          message: `Circular dependency detected in state "${stateMap.get(id)?.name}".`,
+        });
+        return;
+      }
+      if (visitedNodes.has(id)) return;
+      visitedNodes.add(id);
+      recStack.add(id);
+      const st = stateMap.get(id);
+      if (st) {
+         for (const tr of st.transitions || []) {
+           if (tr.targetStateId) {
+             detectAllCycles(tr.targetStateId, [...currentPath, id]);
+           }
+         }
+      }
+      recStack.delete(id);
+    };
+    
+    visitedNodes.clear();
+    recStack.clear();
+    for (const state of states) {
+      if (!visitedNodes.has(state.id)) {
+         detectAllCycles(state.id, []);
+      }
+    }
+  }
+
   return issues;
 }
 

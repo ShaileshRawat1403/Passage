@@ -200,6 +200,59 @@ export const Header: React.FC = () => {
             );
           })()}
 
+          {/* Export / Import */}
+          {activeTab !== "home" && (
+            <div className="flex gap-1">
+              <label
+                className="px-2 sm:px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Import Workflow JSON"
+              >
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        try {
+                          const json = event.target?.result as string;
+                          const newId = useWorkflowStore.getState().importWorkflowJson(json);
+                          setActiveWorkflowId(newId);
+                        } catch (err) {
+                          alert("Failed to import workflow JSON.");
+                        }
+                      };
+                      reader.readAsText(file);
+                    }
+                    e.target.value = "";
+                  }}
+                />
+                <Activity className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline">Import</span>
+              </label>
+              <button
+                onClick={() => {
+                  if (activeWorkflow) {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeWorkflow, null, 2));
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href",     dataStr);
+                    downloadAnchorNode.setAttribute("download", `${activeWorkflow.name.replace(/\s+/g, "_")}_v${activeWorkflow.version}.json`);
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                  }
+                }}
+                className="px-2 sm:px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Export Workflow JSON"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline">Export</span>
+              </button>
+            </div>
+          )}
+
           {/* AI Workflow Creator - Hidden on Home */}
           {activeTab !== "home" && (
             <button
