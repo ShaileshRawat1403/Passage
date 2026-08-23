@@ -1,11 +1,13 @@
 import React from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import { GitFork, ArrowRight } from "lucide-react";
+import { GitFork, ArrowRight, Settings } from "lucide-react";
 import { WorkflowState } from "../../../types/workflow";
+import { useWorkflowStore } from "../../../store/workflowStore";
 
 export const DecisionNode: React.FC<NodeProps> = (props) => {
   const data = props.data as unknown as WorkflowState;
   const selected = props.selected;
+  const setSelectedStateId = useWorkflowStore((state) => state.setSelectedStateId);
 
   return (
     <div
@@ -21,13 +23,27 @@ export const DecisionNode: React.FC<NodeProps> = (props) => {
         className="!w-3 !h-3 !bg-amber-400 !border-2 !border-slate-950"
       />
 
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
-          <GitFork className="w-3.5 h-3.5" />
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
+            <GitFork className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-[10px] font-mono tracking-widest uppercase text-amber-400 font-bold">
+            DECISION / BRANCH
+          </span>
         </div>
-        <span className="text-[10px] font-mono tracking-widest uppercase text-amber-400 font-bold">
-          DECISION / BRANCH
-        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedStateId(props.id);
+          }}
+          className="p-1 rounded-md bg-white/10 hover:bg-amber-500/20 text-slate-300 hover:text-amber-400 border border-white/10 hover:border-amber-400/50 transition-all cursor-pointer shadow-sm group/btn"
+          title="Configure State Settings"
+          aria-label="Configure State"
+        >
+          <Settings className="w-3.5 h-3.5 transition-transform group-hover/btn:rotate-45" />
+        </button>
       </div>
 
       <div className="font-bold text-sm text-slate-100 mb-1">{data?.name}</div>

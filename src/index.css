@@ -101,8 +101,9 @@
   --control-border: rgba(255, 255, 255, 0.2);
 }
 
+/* Enforced Pure White Blueprint Light Theme */
 [data-theme="blueprint-light"] {
-  --app-bg: #f8fafc;
+  --app-bg: #ffffff;
   --panel-bg: #ffffff;
   --panel-solid: #ffffff;
   --card-bg: #ffffff;
@@ -114,64 +115,73 @@
   --text-main: #0f172a;
   --text-muted: #475569;
   --grid-dots: rgba(37, 99, 235, 0.12);
-  --canvas-bg: #f1f5f9;
-  --canvas-mask: rgba(255, 255, 255, 0.9);
+  --canvas-bg: #f8fafc;
+  --canvas-mask: rgba(255, 255, 255, 0.98);
   --control-bg: #ffffff;
   --control-text: #0f172a;
   --control-border: #cbd5e1;
   color-scheme: light;
 }
 
-/* Comprehensive Pure White Light Theme Surface, Border & Typography Overrides */
-[data-theme="blueprint-light"] .bg-[#020617],
-[data-theme="blueprint-light"] .bg-[#070b14],
-[data-theme="blueprint-light"] .bg-[#0e1626],
-[data-theme="blueprint-light"] .bg-[#0a101d],
-[data-theme="blueprint-light"] .bg-[#030712],
-[data-theme="blueprint-light"] .bg-[#020d07],
-[data-theme="blueprint-light"] .bg-[#0e0714],
-[data-theme="blueprint-light"] .bg-slate-950,
-[data-theme="blueprint-light"] .bg-slate-950\/80,
-[data-theme="blueprint-light"] .bg-slate-950\/90,
-[data-theme="blueprint-light"] .bg-slate-950\/50,
-[data-theme="blueprint-light"] .bg-slate-900,
-[data-theme="blueprint-light"] .bg-slate-900\/90,
-[data-theme="blueprint-light"] .bg-slate-900\/80,
-[data-theme="blueprint-light"] .bg-slate-900\/50,
-[data-theme="blueprint-light"] .bg-slate-900\/40,
-[data-theme="blueprint-light"] .bg-slate-800,
-[data-theme="blueprint-light"] .bg-slate-800\/80,
-[data-theme="blueprint-light"] .bg-slate-800\/50,
-[data-theme="blueprint-light"] .bg-slate-800\/30,
-[data-theme="blueprint-light"] .bg-black,
-[data-theme="blueprint-light"] .bg-black\/20,
+/* Global Container Background Overrides in Blueprint Light Theme */
+[data-theme="blueprint-light"] .bg-\[\#020617\],
+[data-theme="blueprint-light"] .bg-\[\#070b14\],
+[data-theme="blueprint-light"] .bg-\[\#0e1626\],
+[data-theme="blueprint-light"] .bg-\[\#0a101d\],
+[data-theme="blueprint-light"] .bg-\[\#030712\],
+[data-theme="blueprint-light"] .bg-\[\#020d07\],
+[data-theme="blueprint-light"] .bg-\[\#0e0714\],
+[data-theme="blueprint-light"] .bg-\[\#081810\],
+[data-theme="blueprint-light"] .bg-\[\#180e22\],
+[data-theme="blueprint-light"] .bg-\[\#0f172a\],
 [data-theme="blueprint-light"] .bg-black\/30,
 [data-theme="blueprint-light"] .bg-black\/40,
 [data-theme="blueprint-light"] .bg-black\/50,
 [data-theme="blueprint-light"] .bg-black\/60,
 [data-theme="blueprint-light"] .bg-black\/70,
 [data-theme="blueprint-light"] .bg-black\/80,
-[data-theme="blueprint-light"] .bg-black\/90 {
+[data-theme="blueprint-light"] .bg-black\/90,
+[data-theme="blueprint-light"] .bg-slate-950,
+[data-theme="blueprint-light"] .bg-slate-950\/80,
+[data-theme="blueprint-light"] .bg-slate-950\/90,
+[data-theme="blueprint-light"] .bg-slate-950\/95,
+[data-theme="blueprint-light"] .bg-slate-950\/50,
+[data-theme="blueprint-light"] .bg-slate-900,
+[data-theme="blueprint-light"] .bg-slate-900\/90,
+[data-theme="blueprint-light"] .bg-slate-900\/80,
+[data-theme="blueprint-light"] .bg-slate-900\/70,
+[data-theme="blueprint-light"] .bg-slate-900\/60,
+[data-theme="blueprint-light"] .bg-slate-900\/50,
+[data-theme="blueprint-light"] .bg-slate-900\/40,
+[data-theme="blueprint-light"] .bg-slate-800,
+[data-theme="blueprint-light"] .bg-slate-800\/80,
+[data-theme="blueprint-light"] .bg-slate-800\/50,
+[data-theme="blueprint-light"] .bg-slate-800\/30 {
   background-color: #ffffff !important;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05) !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03) !important;
 }
 
+/* Secondary Sub-containers & Clean Fills */
 [data-theme="blueprint-light"] .bg-white\/5,
 [data-theme="blueprint-light"] .bg-white\/10,
+[data-theme="blueprint-light"] .bg-white\/15,
 [data-theme="blueprint-light"] .bg-white\/20 {
   background-color: #f1f5f9 !important;
 }
 
+/* Hover States for Light Mode */
 [data-theme="blueprint-light"] .bg-white\/5:hover,
 [data-theme="blueprint-light"] .bg-white\/10:hover,
 [data-theme="blueprint-light"] .bg-white\/20:hover,
 [data-theme="blueprint-light"] .hover\:bg-white\/5:hover,
 [data-theme="blueprint-light"] .hover\:bg-white\/10:hover,
 [data-theme="blueprint-light"] .hover\:bg-slate-800\/50:hover,
-[data-theme="blueprint-light"] .hover\:bg-slate-900:hover {
+[data-theme="blueprint-light"] .hover\:bg-slate-900:hover,
+[data-theme="blueprint-light"] .hover\:bg-slate-800:hover {
   background-color: #e2e8f0 !important;
 }
 
+/* Crisp Light Borders */
 [data-theme="blueprint-light"] .border-white\/5,
 [data-theme="blueprint-light"] .border-white\/10,
 [data-theme="blueprint-light"] .border-white\/15,
@@ -179,10 +189,12 @@
 [data-theme="blueprint-light"] .border-slate-800,
 [data-theme="blueprint-light"] .border-slate-700,
 [data-theme="blueprint-light"] .border-slate-800\/50,
-[data-theme="blueprint-light"] .border-slate-800\/80 {
+[data-theme="blueprint-light"] .border-slate-800\/80,
+[data-theme="blueprint-light"] .border-slate-900 {
   border-color: #cbd5e1 !important;
 }
 
+/* High Contrast Slate-900 Text Colors in Light Mode */
 [data-theme="blueprint-light"] .text-slate-100,
 [data-theme="blueprint-light"] .text-slate-200,
 [data-theme="blueprint-light"] .text-white {
@@ -195,8 +207,13 @@
   color: #475569 !important;
 }
 
+/* Accent Indicators in Light Mode */
 [data-theme="blueprint-light"] .text-cyan-400 {
   color: #0284c7 !important;
+}
+
+[data-theme="blueprint-light"] .text-cyan-300 {
+  color: #0369a1 !important;
 }
 
 [data-theme="blueprint-light"] .text-emerald-400 {
@@ -208,12 +225,26 @@
 }
 
 [data-theme="blueprint-light"] .text-rose-400 {
-  color: #e11d48 !important;
+  color: #dc2626 !important;
+}
+
+[data-theme="blueprint-light"] .text-indigo-400,
+[data-theme="blueprint-light"] .text-indigo-300 {
+  color: #4f46e5 !important;
+}
+
+[data-theme="blueprint-light"] .text-pink-400 {
+  color: #db2777 !important;
 }
 
 [data-theme="blueprint-light"] .bg-cyan-500\/10 {
   background-color: #f0f9ff !important;
   border-color: #bae6fd !important;
+}
+
+[data-theme="blueprint-light"] .bg-cyan-500\/15 {
+  background-color: #e0f2fe !important;
+  border-color: #7dd3fc !important;
 }
 
 [data-theme="blueprint-light"] .bg-emerald-500\/10 {
@@ -231,17 +262,108 @@
   border-color: #fecdd3 !important;
 }
 
+[data-theme="blueprint-light"] .bg-indigo-500\/10 {
+  background-color: #eef2ff !important;
+  border-color: #c7d2fe !important;
+}
+
+/* Action Primary Buttons in Light Mode */
+[data-theme="blueprint-light"] .bg-cyan-500 {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+[data-theme="blueprint-light"] .bg-cyan-500:hover,
+[data-theme="blueprint-light"] .hover\:bg-cyan-400:hover {
+  background-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="blueprint-light"] .bg-cyan-500 .fill-slate-950,
+[data-theme="blueprint-light"] .bg-cyan-500 svg {
+  fill: #ffffff !important;
+  color: #ffffff !important;
+}
+
+/* Gradients Overrides in Light Mode */
+[data-theme="blueprint-light"] .bg-gradient-to-br {
+  background-image: none !important;
+  background-color: #ffffff !important;
+}
+
+/* Form Controls in Light Mode */
 [data-theme="blueprint-light"] input,
 [data-theme="blueprint-light"] select,
 [data-theme="blueprint-light"] textarea {
   background-color: #ffffff !important;
   color: #0f172a !important;
   border-color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="blueprint-light"] option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
 }
 
 [data-theme="blueprint-light"] input::placeholder,
 [data-theme="blueprint-light"] textarea::placeholder {
   color: #94a3b8 !important;
+}
+
+/* Glass Panels & Shadows in Light Mode */
+[data-theme="blueprint-light"] .glass-panel {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="blueprint-light"] .glass-panel-cyan {
+  background: #f0f9ff !important;
+  border-color: #93c5fd !important;
+}
+
+[data-theme="blueprint-light"] .glow-cyan,
+[data-theme="blueprint-light"] .glow-cyan-lg {
+  box-shadow: 0 2px 8px -2px rgba(37, 99, 235, 0.15) !important;
+}
+
+/* React Flow Canvas and Nodes Override */
+[data-theme="blueprint-light"] .react-flow {
+  background-color: #f8fafc !important;
+}
+
+[data-theme="blueprint-light"] .react-flow__node {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="blueprint-light"] .react-flow__handle {
+  border-color: #ffffff !important;
+}
+
+[data-theme="blueprint-light"] .react-flow__controls,
+[data-theme="blueprint-light"] .react-flow__minimap {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="blueprint-light"] .react-flow__controls-button {
+  background-color: #ffffff !important;
+  border-bottom-color: #e2e8f0 !important;
+  fill: #0f172a !important;
+}
+
+[data-theme="blueprint-light"] .react-flow__controls-button:hover {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="blueprint-light"] .react-flow__edge-path {
+  stroke: #475569 !important;
 }
 
 @layer utilities {

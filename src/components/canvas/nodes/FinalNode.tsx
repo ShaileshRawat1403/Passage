@@ -1,15 +1,17 @@
 import React from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Settings } from "lucide-react";
 import { WorkflowState } from "../../../types/workflow";
+import { useWorkflowStore } from "../../../store/workflowStore";
 
 export const FinalNode: React.FC<NodeProps> = (props) => {
   const data = props.data as unknown as WorkflowState;
   const selected = props.selected;
+  const setSelectedStateId = useWorkflowStore((state) => state.setSelectedStateId);
 
   return (
     <div
-      className={`px-5 py-3 rounded-full bg-slate-950/80 backdrop-blur-xl border-2 transition-all shadow-2xl flex items-center gap-3 text-sm min-w-[200px] ${
+      className={`px-5 py-3 rounded-full bg-slate-950/80 backdrop-blur-xl border-2 transition-all shadow-2xl flex items-center gap-3 text-sm min-w-[220px] ${
         selected
           ? "border-emerald-400 ring-4 ring-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.3)]"
           : "border-emerald-500/50 hover:border-emerald-400"
@@ -31,6 +33,19 @@ export const FinalNode: React.FC<NodeProps> = (props) => {
         </div>
         <div className="font-bold text-slate-100 truncate text-xs">{data?.name}</div>
       </div>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedStateId(props.id);
+        }}
+        className="p-1 rounded-md bg-white/10 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 border border-white/10 hover:border-emerald-400/50 transition-all cursor-pointer shadow-sm group/btn shrink-0"
+        title="Configure State Settings"
+        aria-label="Configure State"
+      >
+        <Settings className="w-3.5 h-3.5 transition-transform group-hover/btn:rotate-45" />
+      </button>
     </div>
   );
 };

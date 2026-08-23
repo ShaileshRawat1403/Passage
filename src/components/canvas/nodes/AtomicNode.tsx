@@ -1,11 +1,13 @@
 import React from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import { Layers, ShieldCheck, ArrowRight, Zap } from "lucide-react";
+import { Layers, ShieldCheck, ArrowRight, Zap, Settings } from "lucide-react";
 import { WorkflowState } from "../../../types/workflow";
+import { useWorkflowStore } from "../../../store/workflowStore";
 
 export const AtomicNode: React.FC<NodeProps> = (props) => {
   const data = props.data as unknown as WorkflowState;
   const selected = props.selected;
+  const setSelectedStateId = useWorkflowStore((state) => state.setSelectedStateId);
 
   const actionCount = (data?.entryActions?.length || 0) + (data?.activeActions?.length || 0) + (data?.exitActions?.length || 0);
   const transitionCount = data?.transitions?.length || 0;
@@ -34,12 +36,26 @@ export const AtomicNode: React.FC<NodeProps> = (props) => {
             STATE
           </span>
         </div>
-        {actionCount > 0 && (
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-amber-300 border border-white/10 flex items-center gap-1">
-            <Zap className="w-2.5 h-2.5 text-amber-400" />
-            {actionCount} {actionCount === 1 ? "action" : "actions"}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {actionCount > 0 && (
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/5 text-amber-300 border border-white/10 flex items-center gap-1">
+              <Zap className="w-2.5 h-2.5 text-amber-400" />
+              {actionCount}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedStateId(props.id);
+            }}
+            className="p-1 rounded-md bg-white/10 hover:bg-blue-500/20 text-slate-300 hover:text-blue-400 border border-white/10 hover:border-blue-400/50 transition-all cursor-pointer shadow-sm group/btn"
+            title="Configure State Settings"
+            aria-label="Configure State"
+          >
+            <Settings className="w-3.5 h-3.5 transition-transform group-hover/btn:rotate-45" />
+          </button>
+        </div>
       </div>
 
       <div className="font-bold text-sm text-slate-100 mb-1 leading-tight">{data?.name}</div>

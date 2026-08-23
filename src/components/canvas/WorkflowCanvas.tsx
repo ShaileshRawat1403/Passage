@@ -156,13 +156,12 @@ const WorkflowCanvasInner: React.FC = () => {
     [setSelectedSelection]
   );
 
-  // Handle Node selection on explicit click
+  // Handle Node click (separated from configuration display; explicit settings icon triggers inspector)
   const onNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      if (isDraggingRef.current || justDraggedRef.current) return;
-      setSelectedStateId(node.id);
+    (_event: React.MouseEvent, _node: Node) => {
+      // Intentionally empty to prevent drag/click from opening configuration panel
     },
-    [setSelectedStateId]
+    []
   );
 
   // Handle Edge selection

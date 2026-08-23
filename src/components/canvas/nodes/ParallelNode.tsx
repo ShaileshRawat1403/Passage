@@ -1,12 +1,14 @@
 import React from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import { Network } from "lucide-react";
+import { Network, Settings } from "lucide-react";
 import { WorkflowState } from "../../../types/workflow";
+import { useWorkflowStore } from "../../../store/workflowStore";
 
 export const ParallelNode: React.FC<NodeProps> = (props) => {
   const data = props.data as unknown as WorkflowState;
   const selected = props.selected;
   const mode = data?.parallelPolicy?.mode || "all";
+  const setSelectedStateId = useWorkflowStore((state) => state.setSelectedStateId);
 
   return (
     <div
@@ -31,9 +33,23 @@ export const ParallelNode: React.FC<NodeProps> = (props) => {
             PARALLEL FORK
           </span>
         </div>
-        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/5 text-pink-400 border border-pink-500/30 font-bold uppercase">
-          {mode}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/5 text-pink-400 border border-pink-500/30 font-bold uppercase">
+            {mode}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedStateId(props.id);
+            }}
+            className="p-1 rounded-md bg-white/10 hover:bg-pink-500/20 text-slate-300 hover:text-pink-400 border border-white/10 hover:border-pink-400/50 transition-all cursor-pointer shadow-sm group/btn"
+            title="Configure State Settings"
+            aria-label="Configure State"
+          >
+            <Settings className="w-3.5 h-3.5 transition-transform group-hover/btn:rotate-45" />
+          </button>
+        </div>
       </div>
 
       <div className="font-bold text-sm text-slate-100 mb-1">{data?.name}</div>
