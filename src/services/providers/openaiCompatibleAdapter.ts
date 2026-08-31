@@ -26,7 +26,7 @@ export class OpenAICompatibleAdapter implements LlmProvider {
     }
 
     return new OpenAI({
-      apiKey: config.apiKey || "dummy-key",
+      apiKey: config.apiKey || "local-bypass-key",
       baseURL: config.baseUrl,
     });
   }

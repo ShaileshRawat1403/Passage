@@ -2,6 +2,7 @@ import { classifyWorkflowEdges } from "../../lib/layout/classification";
 import React, { useCallback, useMemo } from "react";
 import {
   ReactFlow,
+  useReactFlow,
   ReactFlowProvider,
   MiniMap,
   Controls,
@@ -28,6 +29,7 @@ import { CustomEdge } from "./CustomEdge";
 import { FloatingCanvasToolbar } from "./FloatingCanvasToolbar";
 import { FloatingStateInspector } from "../inspector/FloatingStateInspector";
 import { WorkflowDashboard } from "./WorkflowDashboard";
+import { QuickAddSidebar, DraggedTemplate } from "./QuickAddSidebar";
 
 const nodeTypes = {
   start: StartNode,
@@ -62,6 +64,9 @@ const WorkflowCanvasInner: React.FC = () => {
     pasteSelection,
     duplicateState,
   } = useWorkflowStore();
+
+  const { screenToFlowPosition } = useReactFlow();
+  const addState = useWorkflowStore(s => s.addState);
 
   const activeWorkflow = useMemo(() => {
     return workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
@@ -121,8 +126,45 @@ const WorkflowCanvasInner: React.FC = () => {
     const timer = setTimeout(() => {
       isUpdatingFromStoreRef.current = false;
     }, 0);
+    
     return () => clearTimeout(timer);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const typeRaw = event.dataTransfer.getData("application/reactflow");
+      if (!typeRaw || !activeWorkflow) return;
+
+      try {
+        const template = JSON.parse(typeRaw) as DraggedTemplate;
+        
+        // Calculate the dropped position
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+
+        // Add the new state via store
+        addState(activeWorkflow.id, {
+          type: template.type,
+          name: template.name,
+          position,
+          entryActions: (template.entryActions || []).map(a => ({ ...a, id: "act-" + Date.now() + Math.random().toString(36).substring(2, 7) })),
+        });
+      } catch (err) {
+        console.error("Drop parsing error:", err);
+      }
+    },
+    [activeWorkflow, screenToFlowPosition, addState]
+  );
+
 
   // Handle Dragging Node positions
   const onNodeDragStart = useCallback(() => {
@@ -270,9 +312,12 @@ const WorkflowCanvasInner: React.FC = () => {
     >
       <FloatingCanvasToolbar />
       <WorkflowDashboard />
+      <QuickAddSidebar />
       <FloatingStateInspector />
 
       <ReactFlow
+        onDragOver={onDragOver}
+        onDrop={onDrop}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}

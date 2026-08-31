@@ -8,7 +8,7 @@ import { createWorkflowRun, dispatchWorkflowEvent } from "./runtime";
 import { executeAction, applyActionOutputToContext } from "./actionExecutor";
 
 describe("Passage State Machine - Schema & Validation", () => {
-  const mockValidWorkflow: WorkflowDefinition = {
+  const sampleValidWorkflow: WorkflowDefinition = {
     id: "test-wf-1",
     name: "Test Workflow",
     version: "1.0.0",
@@ -48,15 +48,15 @@ describe("Passage State Machine - Schema & Validation", () => {
   };
 
   it("should pass Zod schema validation for valid workflow", () => {
-    const parseRes = WorkflowDefinitionSchema.safeParse(mockValidWorkflow);
+    const parseRes = WorkflowDefinitionSchema.safeParse(sampleValidWorkflow);
     expect(parseRes.success).toBe(true);
   });
 
   it("should detect duplicate state IDs during validation", () => {
     const invalidWf: WorkflowDefinition = {
-      ...mockValidWorkflow,
+      ...sampleValidWorkflow,
       states: [
-        ...mockValidWorkflow.states,
+        ...sampleValidWorkflow.states,
         {
           id: "step-1", // duplicate
           name: "Duplicate Step",

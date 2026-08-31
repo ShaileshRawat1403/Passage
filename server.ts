@@ -22,7 +22,7 @@ export async function createPassageApp(options: PassageAppOptions = {}) {
 
   app.use(express.json({ limit: "10mb" }));
 
-  // Middleware to derive workspace context (mocked until full auth)
+  // Middleware to derive workspace context (single-tenant local deployment)
   app.use((req, res, next) => {
     req.workspaceId = req.headers["x-workspace-id"] || "default-workspace";
     if (req.body && typeof req.body === 'object') {
@@ -320,15 +320,14 @@ export async function createPassageApp(options: PassageAppOptions = {}) {
       }
 
       const { providerRegistry } = await import("./src/services/providers/registry");
-      const defaultGeminiConn = {
-        id: "default-gemini",
-        name: "Default Gemini",
-        type: "agent_provider" as const,
-        service: "gemini" as const,
-        status: "configured" as const,
-        defaultModel: "gemini-3.6-flash",
-        apiKeyEnvVar: "GEMINI_API_KEY",
-      };
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      const aiConn = connections.find((c) => c.type === "agent_provider" && c.status === "configured");
+      
+      if (!aiConn) {
+        res.status(400).json({ error: "No AI provider configured. Please add an AI Connection in the Connections tab first." });
+        return;
+      }
 
       const prompt = `You are a workflow architect expert for Passage (a durable visual state-machine workflow engine).
 The user wants to generate a complete workflow based on this description:
@@ -383,7 +382,7 @@ Output a JSON object matching this TypeScript structure:
 IMPORTANT: Ensure there is exactly 1 'start' state, at least 1 'final' state, valid outgoing transitions for intermediate states, and meaningful state IDs.
 Respond strictly with valid JSON. Do NOT include markdown code blocks.`;
 
-      const llmRes = await providerRegistry.generate(defaultGeminiConn, {
+      const llmRes = await providerRegistry.generate(aiConn, {
         model: "gemini-3.6-flash",
         messages: [{ role: "user", content: prompt }],
         responseFormat: { type: "json" },
@@ -415,10 +414,39 @@ Respond strictly with valid JSON. Do NOT include markdown code blocks.`;
   });
 
   // API Route: AI Action Execution Placeholder (Governed AI Actions arrive in P2.2)
-  app.post("/api/action/agent-execute", async (_req, res) => {
-    res.status(501).json({
-      error: "Governed AI Actions execution arrives in milestone P2.2.",
-    });
+  app.post("/api/action/agent-execute", async (req, res) => {
+    try {
+      const { agentName, model, systemInstructions, prompt, context } = req.body;
+      
+      const adapter = (await import("./src/services/persistenceAdapter")).getPersistenceAdapter();
+      const connections = await adapter.getAllConnections();
+      const aiConn = connections.find((c) => c.type === "agent_provider" && c.status === "configured");
+      
+      if (!aiConn) {
+        res.status(400).json({ error: "No AI provider configured for agent execution." });
+        return;
+      }
+      
+      const { providerRegistry } = await import("./src/services/providers/registry");
+      
+      const finalPrompt = prompt 
+        ? prompt 
+        : `Context data:\n${JSON.stringify(context, null, 2)}\nPlease evaluate this context and output JSON.`;
+      
+      const llmRes = await providerRegistry.generate(aiConn, {
+        model: model || aiConn.defaultModel || "custom-model",
+        messages: [
+          ...(systemInstructions ? [{ role: "system" as const, content: systemInstructions }] : []),
+          { role: "user" as const, content: finalPrompt }
+        ],
+        responseFormat: { type: "json" }
+      });
+      
+      res.json(llmRes);
+    } catch (err: unknown) {
+      console.error("Agent Execution Error:", err);
+      res.status(500).json({ error: String(err) });
+    }
   });
 
   // Vite middleware for dev or Static serve in production
@@ -485,7 +513,8 @@ export async function startPassageRuntime(options: PassageAppOptions = {}): Prom
   });
 }
 
-import { pathToFileURL } from "url";
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+
+// Auto-start server unless in test environment
+if (process.env.NODE_ENV !== 'test') {
   startPassageRuntime();
 }

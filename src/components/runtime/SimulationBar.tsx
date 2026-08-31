@@ -13,7 +13,7 @@ export const SimulationBar: React.FC = () => {
   } = useWorkflowStore();
 
   const [customEvent, setCustomEvent] = useState("VALIDATION_PASSED");
-  const [customAmount, setCustomAmount] = useState<number>(82400);
+  const [customPayload, setCustomPayload] = useState<string>('{\n  "invoice": {\n    "amount": 82400\n  }\n}');
 
   const activeRun = activeRuns.find((r) => r.id === activeRunId) || activeRuns[0];
   const activeWf = workflows.find((w) => w.id === activeWorkflowId) || workflows[0];
@@ -33,25 +33,24 @@ export const SimulationBar: React.FC = () => {
   }
 
   const handleEmit = (eventName: string) => {
-    const inv = (activeRun.context.invoice as Record<string, unknown>) || {};
-    dispatchEventToRun(activeRun.id, eventName, {
-      invoice: {
-        ...inv,
-        amount: customAmount,
-      },
-    });
+    let payload = {};
+    try {
+      payload = JSON.parse(customPayload);
+    } catch (e) {
+      console.warn("Invalid JSON in custom payload");
+      return;
+    }
+    dispatchEventToRun(activeRun.id, eventName, payload);
   };
 
   const handleRestart = () => {
-    startNewRun(activeWorkflowId, {
-      invoice: {
-        id: "INV-2026-SIM",
-        amount: customAmount,
-        currency: "INR",
-        vendorId: "VEND-991",
-        vendorName: "Simulated Logistics",
-      },
-    });
+    let payload = {};
+    try {
+      payload = JSON.parse(customPayload);
+    } catch (e) {
+      console.warn("Invalid JSON in custom payload");
+    }
+    startNewRun(activeWorkflowId, payload);
   };
 
   const currentState = activeWf?.states.find((s) => s.id === activeRun.currentStateId);
@@ -111,6 +110,15 @@ export const SimulationBar: React.FC = () => {
         </div>
 
         {/* Custom Event Trigger */}
+        <div className="flex items-center gap-1 text-slate-400">Payload:</div>
+        <input
+          type="text"
+          value={customPayload}
+          onChange={(e) => setCustomPayload(e.target.value)}
+          placeholder='{"key": "value"}'
+          className="w-48 px-2 py-1 rounded-lg bg-black/40 border border-white/10 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-400"
+          title="Event Context Payload (JSON)"
+        />
         <div className="flex items-center gap-1">
           <input
             type="text"
